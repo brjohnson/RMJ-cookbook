@@ -263,7 +263,7 @@ function renderFromData(rows) {
     ${relatedRecipes.length > 0 ? `
     <div class="related-section" style="padding:0 0 60px;">
       <div class="page">
-        <h2 style="font-family:var(--font-serif);margin-bottom:16px;">Goes well with</h2>
+        <h2 style="font-family:var(--font-serif);margin-bottom:16px;">Related recipes</h2>
         <div class="related-grid">
           ${relatedRecipes.map(r => `
           <a class="recipe-card" href="recipe.html?id=${encodeURIComponent(r.slug)}">
