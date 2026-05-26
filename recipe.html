@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Recipe — The Johnson Cookbook</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="nav-brand" href="index.html">🥘 The Johnson Cookbook</a>
+    <div class="nav-links">
+      <a class="nav-link" href="index.html">← All Recipes</a>
+      <a class="nav-link nav-link-primary" href="admin.html">+ Add Recipe</a>
+    </div>
+  </div>
+</nav>
+
+<!-- CONTENT injected by JS -->
+<div id="page-content">
+  <div style="text-align:center;padding:120px 24px;">
+    <div class="spinner" style="margin:0 auto 16px;"></div>
+    <p style="color:var(--ink-faint)">Loading recipe…</p>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script>
+// ============================================================
+//  RECIPE DETAIL PAGE
+// ============================================================
+
+const CATEGORIES = {
+  "appetizers":"Appetizers","baking":"Baking","basic-building-blocks":"Building Blocks","beans":"Beans",
+  "breakfasts-breads":"Breakfasts & Breads","cocktails":"Cocktails","desserts":"Desserts",
+  "salsas-dips":"Dips & Salsas","easy-weeknight-meals":"Easy Weeknight",
+  "entertaining-meals-most-preparation-can-be-done-ahead-of-time":"Entertaining",
+  "seafood":"Seafood","holiday-specials":"Holiday","interesting-but-not-tried":"Want to Try",
+  "japan-southeast-asia":"Japan & SE Asia","latin-america":"Latin America","meat":"Meat",
+  "meatballs-sausages":"Meatballs & Sausages","mediterranean":"Mediterranean","pasta-rice":"Pasta & Rice",
+  "potatoes":"Potatoes","poultry":"Poultry","regular-family-favorites":"Family Favorites",
+  "sauces-relishes":"Sauces & Relishes","rice-rice-dishes":"Rice Dishes","salads":"Salads",
+  "sandwiches":"Sandwiches","simple-but-requires-marinading-or-day-before-preparation":"Make Ahead",
+  "soups":"Soups","stews-pies":"Stews & Pies","tapas":"Tapas","vegetables":"Vegetables"
+};
+
+const CATEGORY_HUES = {
+  "appetizers":25,"baking":38,"basic-building-blocks":196,"beans":118,
+  "breakfasts-breads":44,"cocktails":278,"desserts":332,"salsas-dips":12,
+  "easy-weeknight-meals":168,
+  "entertaining-meals-most-preparation-can-be-done-ahead-of-time":250,
+  "seafood":200,"holiday-specials":350,"interesting-but-not-tried":68,
+  "japan-southeast-asia":188,"latin-america":28,"meat":8,
+  "meatballs-sausages":18,"mediterranean":215,"pasta-rice":48,
+  "potatoes":85,"poultry":42,"regular-family-favorites":356,
+  "sauces-relishes":142,"rice-rice-dishes":78,"salads":102,
+  "sandwiches":36,"simple-but-requires-marinading-or-day-before-preparation":225,
+  "soups":190,"stews-pies":22,"tapas":268,"vegetables":132,
+};
+function slugHash(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) & 0xffff;
+  return h % 360;
+}
+function categoryStyle(slug) {
+  const hue = (slug in CATEGORY_HUES) ? CATEGORY_HUES[slug] : slugHash(slug);
+  return { bg: `hsl(${hue},52%,90%)`, text: `hsl(${hue},48%,26%)` };
+}
+
+function extractFirstImage(html) {
+  if (!html) return "";
+  const m = html.match(/<img[^>]+src=["']([^"']+)["']/i);
+  return m ? m[1] : "";
+}
+function getFavs() { try { return new Set(JSON.parse(localStorage.getItem("jcb_favs")||"[]")); } catch { return new Set(); } }
+function toggleFav(slug) { const f=getFavs(); if(f.has(slug))f.delete(slug);else f.add(slug); localStorage.setItem("jcb_favs",JSON.stringify([...f])); }
+function parseCats(s) { return s?s.split(";").map(x=>x.trim()).filter(Boolean):[]; }
+function authorName(s) { return s?s.replace(/-/g," ").replace(/\b\w/g,c=>c.toUpperCase()):""; }
+function escHtml(s) { return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+// Extract slug from URL
+const urlId = new URLSearchParams(window.location.search).get("id") || "";
+
+// Parse HTML ingredients into a clean list
+function parseIngredientsList(html) {
+  if (!html) return [];
+  // Get all text from <li>, <p>, <h3-5> elements
+  const items = [];
+  const tmp = document.createElement("div");
+  tmp.innerHTML = html;
+  // Try list items first
+  const lis = tmp.querySelectorAll("li");
+  if (lis.length > 0) {
+    lis.forEach(li => { const t = li.textContent.trim(); if (t) items.push(t); });
+  } else {
+    // Fall back to paragraphs
+    tmp.querySelectorAll("p, h3, h4, h5").forEach(el => {
+      const t = el.textContent.trim();
+      if (t && t.length > 1) items.push(t);
+    });
+  }
+  return items;
+}
+
+// Parse related recipe slugs
+function parseRelated(str) {
+  if (!str) return [];
+  return str.split(";").map(s=>s.trim()).filter(Boolean);
+}
+
+function loadLocalAndRender() {
+  fetch("recipes.csv")
+    .then(r => { if (!r.ok) throw new Error("CSV not found"); return r.text(); })
+    .then(text => Papa.parse(text, {header:true, complete:res=>renderFromData(res.data)}))
+    .catch(renderError);
+}
+
+function loadAndRender() {
+  if (!CONFIG.SHEET_CSV_URL || CONFIG.SHEET_CSV_URL.includes("YOUR_")) {
+    loadLocalAndRender(); return;
+  }
+  Papa.parse(CONFIG.SHEET_CSV_URL, {
+    download:true, header:true,
+    complete:res => {
+      const valid = (res.data||[]).filter(r=>r["Name"]&&r["Name"].trim());
+      if (valid.length === 0) { loadLocalAndRender(); } else { renderFromData(res.data); }
+    },
+    error: () => loadLocalAndRender()
+  });
+}
+
+function renderError() {
+  document.getElementById("page-content").innerHTML = `
+    <div style="text-align:center;padding:120px 24px;">
+      <span style="font-size:3rem">😕</span>
+      <h2 style="font-family:var(--font-serif);margin:16px 0 8px;">Recipe not found</h2>
+      <p style="color:var(--ink-faint)"><a href="index.html">← Back to all recipes</a></p>
+    </div>`;
+}
+
+function renderFromData(rows) {
+  const all = rows.filter(r=>r["Name"]?.trim()).map(r=>{
+    const ingredients  = r["Ingredients"]?.trim()||"";
+    const instructions = r["Instructions"]?.trim()||"";
+    const mainImage    = r["Main image"]?.trim()||"";
+    const image = mainImage
+      || extractFirstImage(ingredients)
+      || extractFirstImage(instructions)
+      || "";
+    return {
+      name:r["Name"]?.trim()||"",
+      slug:r["Slug"]?.trim()||"",
+      author:r["Author"]?.trim()||"",
+      quantity:r["Quantity"]?.trim()||"",
+      description:r["Brief description"]?.trim()||"",
+      categories:parseCats(r["Category"]),
+      image,
+      ingredients,
+      instructions,
+      related:r["Related recipes"]?.trim()||"",
+      favorite:r["Favorite?"]?.toLowerCase()==="true",
+      notes:r["Chef's notes"]?.trim()||"",
+      published:r["Published On"]?.trim()||"",
+    };
+  });
+
+  const recipe = all.find(r => r.slug === urlId || r.name.toLowerCase().replace(/\s+/g,"-") === urlId);
+  if (!recipe) { renderError(); return; }
+
+  // Set page title
+  document.title = `${recipe.name} — The Johnson Cookbook`;
+
+  const favs = getFavs();
+  const isFav = favs.has(recipe.slug) || recipe.favorite;
+  const cats = recipe.categories;
+
+  // Build related recipes data
+  const relatedSlugs = parseRelated(recipe.related);
+  const relatedRecipes = relatedSlugs.map(s => all.find(r => r.slug === s)).filter(Boolean);
+
+  // Ingredient items
+  const ingItems = parseIngredientsList(recipe.ingredients);
+
+  // Format date
+  let pubDate = "";
+  if (recipe.published) {
+    try { pubDate = new Date(recipe.published).toLocaleDateString("en-US",{year:"numeric",month:"long"}); } catch {}
+  }
+
+  document.getElementById("page-content").innerHTML = `
+
+    <!-- RECIPE HERO -->
+    <div class="recipe-hero">
+      <div class="recipe-hero-inner${recipe.image ? "" : " hero-no-image"}">
+        <!-- Left: Image (only rendered when an image exists) -->
+        ${recipe.image ? `
+        <div class="recipe-hero-image">
+          <img src="${escHtml(recipe.image)}" alt="${escHtml(recipe.name)}"
+               onload="smartCrop(this)"
+               onerror="this.closest('.recipe-hero-image').remove();document.querySelector('.recipe-hero-inner').classList.add('hero-no-image')">
+        </div>` : ""}
+        <!-- Info -->
+        <div class="recipe-hero-info">
+          <!-- Category tags -->
+          <div class="recipe-meta-row">
+            ${cats.map(c=>{const cs=categoryStyle(c);return `<span class="recipe-cat-tag" style="background:${cs.bg};color:${cs.text}">${escHtml(CATEGORIES[c]||c.replace(/-/g," "))}</span>`;}).join("")}
+          </div>
+          <h1 class="recipe-title">${escHtml(recipe.name)}</h1>
+          ${recipe.author ? `<div class="recipe-byline">By ${escHtml(authorName(recipe.author))}${pubDate?" &mdash; "+pubDate:""}</div>` : ""}
+          ${recipe.description ? `<p class="recipe-desc">${escHtml(recipe.description)}</p>` : ""}
+
+          ${recipe.quantity ? `
+          <div class="recipe-stats">
+            <div class="recipe-stat">
+              <span class="recipe-stat-label">Yield</span>
+              <span class="recipe-stat-value">${escHtml(recipe.quantity)}</span>
+            </div>
+          </div>` : ""}
+
+          <div class="recipe-actions">
+            <button class="btn btn-outline" id="copy-ing-btn" onclick="copyIngredients()">Copy ingredients</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RECIPE BODY -->
+    <div class="recipe-body-outer">
+      <div class="recipe-body">
+
+        <!-- SIDEBAR: Ingredients -->
+        <aside class="recipe-sidebar">
+          <div class="section-header">🧂 Ingredients</div>
+          ${ingItems.length > 0
+            ? `<ul class="ingredients-list">${ingItems.map(i=>`<li>${escHtml(i)}</li>`).join("")}</ul>`
+            : `<div class="instructions-block">${recipe.ingredients || "<p>See instructions.</p>"}</div>`}
+        </aside>
+
+        <!-- MAIN: Instructions + Notes -->
+        <div class="recipe-main">
+          <div class="section-header">📋 Instructions</div>
+          <div class="instructions-block">
+            ${recipe.instructions || "<p>No instructions provided.</p>"}
+          </div>
+
+          ${recipe.notes ? `
+          <div class="notes-card" style="margin-top:36px;">
+            <div class="section-header" style="margin-bottom:12px;">💬 Chef's Notes</div>
+            <div class="instructions-block">${recipe.notes}</div>
+          </div>` : ""}
+        </div>
+      </div>
+    </div>
+
+    <!-- RELATED RECIPES -->
+    ${relatedRecipes.length > 0 ? `
+    <div class="related-section" style="padding:0 0 60px;">
+      <div class="page">
+        <h2 style="font-family:var(--font-serif);margin-bottom:16px;">Goes well with</h2>
+        <div class="related-grid">
+          ${relatedRecipes.map(r => `
+          <a class="recipe-card" href="recipe.html?id=${encodeURIComponent(r.slug)}">
+            <div class="card-image-wrap">
+              <img class="card-image" src="${escHtml(r.image||CONFIG.PLACEHOLDER_IMAGE)}" alt="${escHtml(r.name)}"
+                   loading="lazy" onerror="this.src='${CONFIG.PLACEHOLDER_IMAGE}'">
+            </div>
+            <div class="card-body">
+              <div class="card-title">${escHtml(r.name)}</div>
+              ${r.description ? `<div class="card-desc">${escHtml(r.description)}</div>` : ""}
+            </div>
+          </a>`).join("")}
+        </div>
+      </div>
+    </div>` : ""}
+  `;
+
+  // Copy ingredients to clipboard
+  window.copyIngredients = function() {
+    const items = parseIngredientsList(recipe.ingredients);
+    const text = items.length > 0
+      ? items.join("\n")
+      : recipe.ingredients.replace(/<[^>]+>/g, "").trim();
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = document.getElementById("copy-ing-btn");
+      btn.textContent = "Copied!";
+      setTimeout(() => { btn.textContent = "Copy ingredients"; }, 2000);
+    }).catch(() => {
+      alert("Could not copy — please select the ingredients manually.");
+    });
+  };
+}
+
+// Smart crop: position object-fit:cover to minimise what's cut off.
+// Compares the image's natural AR to the container's AR to decide whether
+// the crop is happening on the sides (→ center is already optimal) or on
+// top/bottom (→ prefer top for food photography where the dish is the hero).
+function smartCrop(img) {
+  const wrap = img.closest(".recipe-hero-image");
+  if (!wrap) return;
+  const iw = img.naturalWidth;
+  const ih = img.naturalHeight;
+  if (!iw || !ih) return;
+  const cw = wrap.clientWidth  || wrap.offsetWidth  || 1;
+  const ch = wrap.clientHeight || wrap.offsetHeight || 1;
+  const imageAR     = iw / ih;
+  const containerAR = cw / ch;
+
+  if (imageAR >= containerAR) {
+    // Landscape vs container → sides get cropped, centre is already minimal
+    img.style.objectPosition = "center center";
+  } else {
+    // Portrait vs container → top/bottom get cropped.
+    // For food photos the subject is almost always in the upper portion,
+    // so anchoring to "center top" shows the most relevant content.
+    img.style.objectPosition = "center top";
+  }
+}
+
+loadAndRender();
+</script>
+</body>
+</html>

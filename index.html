@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Johnson Cookbook</title>
+  <meta name="description" content="Our family's collected recipes — passed down, shared, and loved.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="nav-brand" href="index.html">🥘 The Johnson Cookbook</a>
+    <div class="nav-links">
+      <a class="nav-link active" href="index.html">All Recipes</a>
+      <a class="nav-link" href="index.html?filter=regular-family-favorites">❤ Favorites</a>
+      <a class="nav-link nav-link-primary" href="admin.html">+ Add Recipe</a>
+    </div>
+  </div>
+</nav>
+
+<!-- HERO / SEARCH -->
+<section class="hero">
+  <h1>The Johnson Cookbook</h1>
+  <div class="search-wrap">
+    <input type="search" class="search-input" id="search-input" placeholder="Search recipes, ingredients, or keywords…" autocomplete="off">
+    <svg class="search-icon" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+  </div>
+</section>
+
+<!-- MAIN -->
+<main>
+
+  <!-- SPOTLIGHT: newest recipes (shown before search results) -->
+  <div class="page spotlight-section" id="spotlight-section" style="display:none">
+    <div class="spotlight-header">
+      <div class="spotlight-title">Recently Added</div>
+      <a class="spotlight-link" href="#" onclick="clearSpotlight();return false;">See all recipes ›</a>
+    </div>
+    <div class="spotlight-grid" id="spotlight-grid"></div>
+  </div>
+
+  <div class="page">
+
+    <!-- FILTERS -->
+    <div class="filters" id="filters">
+      <span class="filter-label">Filter:</span>
+      <!-- Popular category chips injected by JS -->
+      <div id="cat-chips" style="display:contents"></div>
+      <!-- "More" dropdown for remaining categories -->
+      <select id="category-select" class="category-select" onchange="handleCategoryChange(this.value)" title="More categories">
+        <option value="">More…</option>
+        <!-- options injected by JS -->
+      </select>
+      <button class="fav-btn" id="fav-filter-btn">
+        <span>⭐</span> Favorites
+      </button>
+    </div>
+
+    <!-- VIEW CONTROLS -->
+    <div class="view-controls" id="view-controls" style="display:none">
+      <div class="vc-group">
+        <span class="vc-label">Sort</span>
+        <button class="vc-btn active" data-sort="az" onclick="setSort('az')">A–Z</button>
+        <button class="vc-btn" data-sort="za" onclick="setSort('za')">Z–A</button>
+        <button class="vc-btn" data-sort="newest" onclick="setSort('newest')">Newest</button>
+      </div>
+      <div class="vc-divider"></div>
+      <div class="vc-group">
+        <span class="vc-label">Photos</span>
+        <button class="vc-btn active" data-photo="all" onclick="setPhoto('all')">All</button>
+        <button class="vc-btn" data-photo="with" onclick="setPhoto('with')">With photo</button>
+        <button class="vc-btn" data-photo="without" onclick="setPhoto('without')">No photo</button>
+      </div>
+      <div class="vc-divider"></div>
+      <div class="vc-group">
+        <button class="vc-btn" id="group-toggle" onclick="toggleGroup()">Group by category</button>
+        <button class="vc-btn" id="collapse-all-btn" onclick="collapseAll()" style="display:none">Collapse all</button>
+      </div>
+    </div>
+
+    <!-- RESULTS BAR -->
+    <div class="results-bar" id="results-bar"></div>
+
+    <!-- RECIPE GRID -->
+    <div class="recipe-grid" id="recipe-grid">
+      <div class="loading-state">
+        <div class="spinner"></div>
+        <p>Loading recipes…</p>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<!-- FOOTER -->
+<footer style="background:var(--white);border-top:1px solid var(--border);padding:28px 24px;text-align:center;color:var(--ink-faint);font-size:0.82rem;">
+  <p>The Johnson Cookbook &mdash; A family tradition. &nbsp;|&nbsp; <a href="admin.html">Add a recipe</a></p>
+</footer>
+
+<script src="config.js"></script>
+<script>
+// ============================================================
+//  DATA LAYER — Parses Google Sheet CSV
+// ============================================================
+
+// Category display names (slug → label)
+const CATEGORIES = {
+  "appetizers":                    "Appetizers",
+  "baking":                        "Baking",
+  "basic-building-blocks":         "Building Blocks",
+  "beans":                         "Beans",
+  "breakfasts-breads":             "Breakfasts & Breads",
+  "cocktails":                     "Cocktails",
+  "desserts":                      "Desserts",
+  "salsas-dips":                   "Dips & Salsas",
+  "easy-weeknight-meals":          "Easy Weeknight",
+  "entertaining-meals-most-preparation-can-be-done-ahead-of-time": "Entertaining",
+  "seafood":                       "Seafood",
+  "holiday-specials":              "Holiday",
+  "interesting-but-not-tried":     "Want to Try",
+  "japan-southeast-asia":          "Japan & SE Asia",
+  "latin-america":                 "Latin America",
+  "meat":                          "Meat",
+  "meatballs-sausages":            "Meatballs & Sausages",
+  "mediterranean":                 "Mediterranean",
+  "pasta-rice":                    "Pasta & Rice",
+  "potatoes":                      "Potatoes",
+  "poultry":                       "Poultry",
+  "regular-family-favorites":      "Family Favorites",
+  "sauces-relishes":               "Sauces & Relishes",
+  "rice-rice-dishes":              "Rice Dishes",
+  "salads":                        "Salads",
+  "sandwiches":                    "Sandwiches",
+  "simple-but-requires-marinading-or-day-before-preparation": "Make Ahead",
+  "soups":                         "Soups",
+  "stews-pies":                    "Stews & Pies",
+  "tapas":                         "Tapas",
+  "vegetables":                    "Vegetables",
+};
+
+// Categories to show as visible chip buttons in the filter bar
+const CHIP_CATS = [
+  "regular-family-favorites",
+  "easy-weeknight-meals",
+  "mediterranean",
+  "soups",
+  "seafood",
+  "meat",
+  "desserts",
+  "tapas",
+  "appetizers",
+  "vegetables",
+  "baking",
+];
+
+// All other categories go in the "More…" dropdown
+const PRIORITY_CATS = [
+  "regular-family-favorites","easy-weeknight-meals","entertaining-meals-most-preparation-can-be-done-ahead-of-time",
+  "mediterranean","soups","seafood","meat","desserts","pasta-rice","tapas","appetizers","vegetables","baking","salads","cocktails"
+];
+
+let ALL_RECIPES = [];
+let activeCategory = null;
+let showFavsOnly = false;
+let searchQuery = "";
+let sortMode = "az";        // "az" | "za" | "newest"
+let groupByCategory = false;
+let photoFilter = "all";    // "all" | "with" | "without"
+
+// Parse URL params
+const urlParams = new URLSearchParams(window.location.search);
+if (urlParams.get("filter")) {
+  activeCategory = urlParams.get("filter");
+}
+
+// ---- Favorites (localStorage) ----
+function getFavs() {
+  try { return new Set(JSON.parse(localStorage.getItem("jcb_favs") || "[]")); }
+  catch { return new Set(); }
+}
+function toggleFav(slug) {
+  const favs = getFavs();
+  if (favs.has(slug)) favs.delete(slug); else favs.add(slug);
+  localStorage.setItem("jcb_favs", JSON.stringify([...favs]));
+}
+
+// ---- Strip HTML tags ----
+function stripHtml(html) {
+  if (!html) return "";
+  return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+// ---- Extract first <img src> from HTML string ----
+function extractFirstImage(html) {
+  if (!html) return "";
+  const m = html.match(/<img[^>]+src=["']([^"']+)["']/i);
+  return m ? m[1] : "";
+}
+
+// ---- Parse categories from semicolon-separated string ----
+function parseCats(str) {
+  if (!str) return [];
+  return str.split(";").map(s => s.trim()).filter(Boolean);
+}
+
+// ---- Author display name ----
+function authorName(raw) {
+  if (!raw) return "";
+  return raw.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+}
+
+// ---- Get first category label ----
+function primaryCatLabel(cats) {
+  for (const c of cats) {
+    if (CATEGORIES[c]) return CATEGORIES[c];
+  }
+  return cats[0] ? cats[0].replace(/-/g, " ") : "";
+}
+
+// ---- Category color pills ----
+// Each slug maps to a hue (0–360); background is a soft tint, text is a deep shade.
+const CATEGORY_HUES = {
+  "appetizers":                    25,
+  "baking":                        38,
+  "basic-building-blocks":         196,
+  "beans":                         118,
+  "breakfasts-breads":             44,
+  "cocktails":                     278,
+  "desserts":                      332,
+  "salsas-dips":                   12,
+  "easy-weeknight-meals":          168,
+  "entertaining-meals-most-preparation-can-be-done-ahead-of-time": 250,
+  "seafood":                       200,
+  "holiday-specials":              350,
+  "interesting-but-not-tried":     68,
+  "japan-southeast-asia":          188,
+  "latin-america":                 28,
+  "meat":                          8,
+  "meatballs-sausages":            18,
+  "mediterranean":                 215,
+  "pasta-rice":                    48,
+  "potatoes":                      85,
+  "poultry":                       42,
+  "regular-family-favorites":      356,
+  "sauces-relishes":               142,
+  "rice-rice-dishes":              78,
+  "salads":                        102,
+  "sandwiches":                    36,
+  "simple-but-requires-marinading-or-day-before-preparation": 225,
+  "soups":                         190,
+  "stews-pies":                    22,
+  "tapas":                         268,
+  "vegetables":                    132,
+};
+
+function slugHash(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) & 0xffff;
+  return h % 360;
+}
+
+// Smart crop: position cover image to minimise what's cut off.
+// Portrait images anchor to top (food subject is usually upper-centre);
+// landscape images keep the default centre crop.
+function smartCrop(img) {
+  const wrap = img.closest(".card-image-wrap");
+  if (!wrap) return;
+  const iw = img.naturalWidth;
+  const ih = img.naturalHeight;
+  if (!iw || !ih) return;
+  const cw = wrap.clientWidth  || wrap.offsetWidth  || 1;
+  const ch = wrap.clientHeight || wrap.offsetHeight || 1;
+  img.style.objectPosition = (iw / ih) >= (cw / ch) ? "center center" : "center top";
+}
+
+function categoryStyle(slug) {
+  const hue = (slug in CATEGORY_HUES) ? CATEGORY_HUES[slug] : slugHash(slug);
+  return {
+    bg:   `hsl(${hue},52%,90%)`,
+    text: `hsl(${hue},48%,26%)`,
+  };
+}
+
+// ---- Load data ----
+async function loadRecipes() {
+  if (!CONFIG.SHEET_CSV_URL || CONFIG.SHEET_CSV_URL.includes("YOUR_")) {
+    loadFromLocalCSV();
+    return;
+  }
+  // Try Google Sheet first, fall back to local CSV on any error
+  Papa.parse(CONFIG.SHEET_CSV_URL, {
+    download: true,
+    header: true,
+    complete: result => {
+      // Google Sheet returned data — but check it's not empty
+      const valid = (result.data || []).filter(r => r["Name"] && r["Name"].trim());
+      if (valid.length === 0) {
+        console.warn("Google Sheet returned no recipes — falling back to local CSV");
+        loadFromLocalCSV();
+      } else {
+        processData(result.data);
+      }
+    },
+    error: err => {
+      console.warn("Google Sheet fetch failed:", err, "— falling back to local CSV");
+      loadFromLocalCSV();
+    }
+  });
+}
+
+function loadFromLocalCSV() {
+  fetch("recipes.csv")
+    .then(r => {
+      if (!r.ok) throw new Error("CSV not found (HTTP " + r.status + ")");
+      return r.text();
+    })
+    .then(text => {
+      if (!text.trim()) throw new Error("recipes.csv is empty");
+      Papa.parse(text, { header: true, complete: result => processData(result.data) });
+    })
+    .catch(err => {
+      document.getElementById("recipe-grid").innerHTML = `
+        <div class="empty-state">
+          <span class="emoji">⚙️</span>
+          <h3>Couldn't load recipes</h3>
+          <p><strong>Error:</strong> ${err.message}</p>
+          <p style="margin-top:8px;">Make sure <code>recipes.csv</code> is in the same folder as <code>index.html</code>, and that you're opening the site via a web server (not directly as a file). See <a href="README.md">README.md</a> for help.</p>
+        </div>`;
+    });
+}
+
+function processData(rows) {
+  ALL_RECIPES = rows
+    .filter(r => r["Name"] && r["Name"].trim())
+    .map(r => {
+      const ingredients  = r["Ingredients"]?.trim() || "";
+      const instructions = r["Instructions"]?.trim() || "";
+      const mainImage    = r["Main image"]?.trim() || "";
+      // Use main image if present; otherwise pull the first <img> from the HTML content
+      const image = mainImage
+        || extractFirstImage(ingredients)
+        || extractFirstImage(instructions)
+        || "";
+      return {
+        name:        r["Name"]?.trim() || "",
+        slug:        r["Slug"]?.trim() || "",
+        author:      r["Author"]?.trim() || "",
+        quantity:    r["Quantity"]?.trim() || "",
+        description: r["Brief description"]?.trim() || "",
+        categories:  parseCats(r["Category"]),
+        image,
+        ingredients,
+        instructions,
+        related:     r["Related recipes"]?.trim() || "",
+        favorite:    r["Favorite?"]?.toLowerCase() === "true",
+        notes:       r["Chef's notes"]?.trim() || "",
+        published:   r["Published On"]?.trim() || "",
+      };
+    });
+
+  buildFilters();
+  renderGrid();
+}
+
+// ---- Build category chips + dropdown ----
+function buildFilters() {
+  const allCats = new Set();
+  ALL_RECIPES.forEach(r => r.categories.forEach(c => allCats.add(c)));
+
+  // --- Chip buttons for popular cats ---
+  const chipsEl = document.getElementById("cat-chips");
+  CHIP_CATS.filter(c => allCats.has(c)).forEach(cat => {
+    const btn = document.createElement("button");
+    btn.className = "cat-chip" + (cat === activeCategory ? " active" : "");
+    btn.textContent = CATEGORIES[cat] || cat.replace(/-/g, " ");
+    btn.dataset.cat = cat;
+    btn.onclick = () => {
+      const isSame = activeCategory === cat;
+      activeCategory = isSame ? null : cat;
+      // sync dropdown
+      document.getElementById("category-select").value = isSame ? "" : cat;
+      document.querySelectorAll(".cat-chip").forEach(b => b.classList.toggle("active", b.dataset.cat === activeCategory));
+      renderGrid();
+    };
+    chipsEl.appendChild(btn);
+  });
+
+  // --- "More…" dropdown for remaining categories ---
+  const ordered = PRIORITY_CATS.filter(c => allCats.has(c) && !CHIP_CATS.includes(c));
+  const rest = [...allCats].filter(c => !PRIORITY_CATS.includes(c) && !CHIP_CATS.includes(c))
+    .sort((a, b) => (CATEGORIES[a] || a).localeCompare(CATEGORIES[b] || b));
+  const allOrdered = [...ordered, ...rest];
+
+  const select = document.getElementById("category-select");
+  allOrdered.forEach(cat => {
+    const opt = document.createElement("option");
+    opt.value = cat;
+    opt.textContent = CATEGORIES[cat] || cat.replace(/-/g, " ");
+    if (cat === activeCategory) opt.selected = true;
+    select.appendChild(opt);
+  });
+
+  // If activeCategory is one of the chips, reflect in chips UI
+  if (activeCategory && CHIP_CATS.includes(activeCategory)) {
+    const chip = chipsEl.querySelector(`[data-cat="${activeCategory}"]`);
+    if (chip) chip.classList.add("active");
+  }
+
+  document.getElementById("fav-filter-btn").onclick = () => {
+    showFavsOnly = !showFavsOnly;
+    document.getElementById("fav-filter-btn").classList.toggle("active", showFavsOnly);
+    renderGrid();
+  };
+
+  // --- Spotlight: 3 most recently added recipes ---
+  buildSpotlight();
+
+  // Reveal view controls now that data is loaded
+  document.getElementById("view-controls").style.display = "flex";
+}
+
+// ---- Spotlight: 3 newest recipes ----
+function buildSpotlight() {
+  const sorted = [...ALL_RECIPES]
+    .filter(r => r.published)
+    .sort((a, b) => new Date(b.published) - new Date(a.published))
+    .slice(0, 3);
+  if (sorted.length === 0) return;
+
+  const favs = getFavs();
+  const section = document.getElementById("spotlight-section");
+  const grid = document.getElementById("spotlight-grid");
+
+  grid.innerHTML = sorted.map(r => renderCard(r, favs)).join("");
+
+  section.style.display = "block";
+}
+
+function clearSpotlight() {
+  document.getElementById("spotlight-section").style.display = "none";
+}
+
+function handleCategoryChange(val) {
+  activeCategory = val || null;
+  // Sync chip buttons
+  document.querySelectorAll(".cat-chip").forEach(b => b.classList.toggle("active", b.dataset.cat === activeCategory));
+  renderGrid();
+}
+
+// ---- Search ----
+document.addEventListener("DOMContentLoaded", () => {
+  const si = document.getElementById("search-input");
+  si.addEventListener("input", () => {
+    searchQuery = si.value.trim().toLowerCase();
+    renderGrid();
+  });
+
+  // If URL had a filter param, activate it
+  if (activeCategory) updateFilters();
+
+  loadRecipes();
+});
+
+// ---- Filter & render ----
+function filteredRecipes() {
+  const favs = getFavs();
+  let result = ALL_RECIPES.filter(r => {
+    if (r.name.toLowerCase().includes("need") && r.instructions.toLowerCase().includes("need data")) return false; // skip stubs
+    if (activeCategory && !r.categories.includes(activeCategory)) return false;
+    if (showFavsOnly && !favs.has(r.slug) && !r.favorite) return false;
+    if (photoFilter === "with"    && !r.image) return false;
+    if (photoFilter === "without" &&  r.image) return false;
+    if (searchQuery) {
+      const haystack = [r.name, r.description, stripHtml(r.ingredients), r.categories.join(" "), authorName(r.author)].join(" ").toLowerCase();
+      if (!haystack.includes(searchQuery)) return false;
+    }
+    return true;
+  });
+
+  // Sort
+  if (sortMode === "az") {
+    result.sort((a, b) => a.name.localeCompare(b.name));
+  } else if (sortMode === "za") {
+    result.sort((a, b) => b.name.localeCompare(a.name));
+  } else if (sortMode === "newest") {
+    result.sort((a, b) => new Date(b.published || 0) - new Date(a.published || 0));
+  }
+
+  return result;
+}
+
+// ---- Single card HTML ----
+const STAR_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path class="star-path" d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`;
+
+function renderCard(r, favs) {
+  const isFav = favs.has(r.slug) || r.favorite;
+  const primaryCat = r.categories[0] || null;
+  const catLabel = primaryCatLabel(r.categories);
+  const desc = r.description || stripHtml(r.notes).slice(0, 120);
+
+  const favBtn = `<button class="card-fav${isFav ? " active" : ""}" data-slug="${escHtml(r.slug)}"
+      title="${isFav ? "Remove from favorites" : "Add to favorites"}"
+      onclick="event.preventDefault();event.stopPropagation();handleFavClick(this)">
+      ${STAR_SVG}</button>`;
+
+  const imageBlock = r.image ? `
+    <div class="card-image-wrap">
+      <img class="card-image" src="${escHtml(r.image)}" alt="${escHtml(r.name)}"
+           loading="lazy" onload="smartCrop(this)" onerror="this.parentElement.remove()">
+    </div>` : "";
+
+  let catPill = "";
+  if (catLabel) {
+    const cs = primaryCat ? categoryStyle(primaryCat) : null;
+    const style = cs ? ` style="background:${cs.bg};color:${cs.text}"` : "";
+    catPill = `<div class="card-category"${style}>${escHtml(catLabel)}</div>`;
+  }
+
+  return `
+    <a class="recipe-card${r.image ? "" : " no-image"}" href="recipe.html?id=${encodeURIComponent(r.slug)}" onclick="if(event.target.closest('.card-fav'))event.preventDefault()">
+      ${imageBlock}
+      <div class="card-body">
+        <div class="card-title">${escHtml(r.name)}</div>
+        ${desc ? `<div class="card-desc">${escHtml(desc)}</div>` : ""}
+        <div class="card-meta">
+          ${r.quantity ? `<span class="card-meta-item">🍽 ${escHtml(r.quantity)}</span>` : ""}
+          ${r.author ? `<span class="card-author">&mdash; ${escHtml(authorName(r.author))}</span>` : ""}
+        </div>
+        <div class="card-bottom-row">
+          ${catPill}
+          ${favBtn}
+        </div>
+      </div>
+    </a>`;
+}
+
+function renderGrid() {
+  const recipes = filteredRecipes();
+  const favs = getFavs();
+  const grid = document.getElementById("recipe-grid");
+  const bar = document.getElementById("results-bar");
+
+  bar.textContent = recipes.length === ALL_RECIPES.length
+    ? `${ALL_RECIPES.length} recipes`
+    : `${recipes.length} of ${ALL_RECIPES.length} recipes`;
+
+  if (recipes.length === 0) {
+    grid.classList.remove("is-grouped");
+    grid.innerHTML = `
+      <div class="empty-state">
+        <span class="emoji">🔍</span>
+        <h3>No recipes found</h3>
+        <p>Try a different search or filter.</p>
+      </div>`;
+    return;
+  }
+
+  if (groupByCategory) {
+    // Build a map of primaryCat → recipes
+    const groups = new Map();
+    recipes.forEach(r => {
+      const cat = r.categories[0] || "__other__";
+      if (!groups.has(cat)) groups.set(cat, []);
+      groups.get(cat).push(r);
+    });
+    // Sort groups alphabetically by label
+    const sortedGroups = [...groups.entries()].sort((a, b) => {
+      const la = CATEGORIES[a[0]] || a[0].replace(/-/g, " ");
+      const lb = CATEGORIES[b[0]] || b[0].replace(/-/g, " ");
+      return la.localeCompare(lb);
+    });
+    grid.classList.add("is-grouped");
+    grid.innerHTML = sortedGroups.map(([cat, recs]) => {
+      const label = CATEGORIES[cat] || cat.replace(/-/g, " ");
+      const cs = categoryStyle(cat);
+      return `
+        <div class="cat-section">
+          <div class="cat-section-header" onclick="toggleCatSection(this)">
+            <span class="cat-section-chevron">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5l4 4 4-4"/></svg>
+            </span>
+            <span class="cat-section-pill" style="background:${cs.bg};color:${cs.text}">${escHtml(label)}</span>
+            <span class="cat-section-count">${recs.length} recipe${recs.length !== 1 ? "s" : ""}</span>
+          </div>
+          <div class="cat-section-body">
+            <div class="cat-section-body-inner">
+              <div class="cat-section-grid">
+                ${recs.map(r => renderCard(r, favs)).join("")}
+              </div>
+            </div>
+          </div>
+        </div>`;
+    }).join("");
+  } else {
+    grid.classList.remove("is-grouped");
+    grid.innerHTML = recipes.map(r => renderCard(r, favs)).join("");
+  }
+}
+
+// ---- View control handlers ----
+function setSort(mode) {
+  sortMode = mode;
+  document.querySelectorAll(".vc-btn[data-sort]").forEach(b => b.classList.toggle("active", b.dataset.sort === mode));
+  renderGrid();
+}
+
+function setPhoto(mode) {
+  photoFilter = mode;
+  document.querySelectorAll(".vc-btn[data-photo]").forEach(b => b.classList.toggle("active", b.dataset.photo === mode));
+  renderGrid();
+}
+
+function toggleGroup() {
+  groupByCategory = !groupByCategory;
+  document.getElementById("group-toggle").classList.toggle("active", groupByCategory);
+  document.getElementById("collapse-all-btn").style.display = groupByCategory ? "" : "none";
+  renderGrid();
+}
+
+function collapseAll() {
+  const btn = document.getElementById("collapse-all-btn");
+  const allCollapsed = [...document.querySelectorAll(".cat-section")].every(s => s.classList.contains("collapsed"));
+  if (allCollapsed) {
+    document.querySelectorAll(".cat-section").forEach(s => s.classList.remove("collapsed"));
+    btn.textContent = "Collapse all";
+  } else {
+    document.querySelectorAll(".cat-section").forEach(s => s.classList.add("collapsed"));
+    btn.textContent = "Expand all";
+  }
+}
+
+function toggleCatSection(headerEl) {
+  headerEl.closest(".cat-section").classList.toggle("collapsed");
+}
+
+function handleFavClick(btn) {
+  const slug = btn.dataset.slug;
+  toggleFav(slug);
+  const isFav = getFavs().has(slug);
+  btn.classList.toggle("active", isFav);
+  btn.title = isFav ? "Remove from favorites" : "Add to favorites";
+}
+
+function escHtml(s) {
+  return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Add a Recipe — The Johnson Cookbook</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <!-- Tesseract.js for OCR (scans printed/handwritten recipe images) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js"></script>
+</head>
+<body>
+
+<!-- PASSWORD GATE -->
+<div id="pw-gate" style="
+  display:none;
+  position:fixed;inset:0;
+  background:#f5f5f5;
+  z-index:9999;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:12px;
+">
+  <div style="font-size:0.7rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#999;margin-bottom:4px;">The Johnson Cookbook</div>
+  <h2 style="font-size:1.2rem;font-weight:600;color:#111;margin-bottom:8px;">Admin access</h2>
+  <form onsubmit="checkPassword(event)" style="display:flex;flex-direction:column;gap:10px;width:100%;max-width:280px;">
+    <input id="pw-input" type="password" placeholder="Password" autocomplete="current-password"
+      style="padding:10px 14px;border:1px solid #bfbfbf;border-radius:4px;font-size:0.95rem;font-family:inherit;outline:none;width:100%;">
+    <button type="submit"
+      style="padding:10px;background:#111;color:#fff;border:none;border-radius:4px;font-size:0.88rem;font-weight:600;cursor:pointer;font-family:inherit;">
+      Enter
+    </button>
+    <div id="pw-error" style="font-size:0.78rem;color:#c0392b;text-align:center;min-height:18px;"></div>
+  </form>
+</div>
+
+<script src="config.js"></script>
+<script>
+(function() {
+  const SESSION_KEY = "jcb_admin_ok";
+  const gate = document.getElementById("pw-gate");
+
+  // Already authenticated this session — hide gate immediately
+  if (sessionStorage.getItem(SESSION_KEY) === "1") {
+    gate.style.display = "none";
+    return;
+  }
+
+  // Show gate
+  gate.style.display = "flex";
+  document.body.style.overflow = "hidden";
+  setTimeout(() => document.getElementById("pw-input").focus(), 50);
+
+  window.checkPassword = function(e) {
+    e.preventDefault();
+    const val = document.getElementById("pw-input").value;
+    if (val === CONFIG.ADMIN_PASSWORD) {
+      sessionStorage.setItem(SESSION_KEY, "1");
+      gate.style.display = "none";
+      document.body.style.overflow = "";
+    } else {
+      document.getElementById("pw-error").textContent = "Incorrect password.";
+      document.getElementById("pw-input").value = "";
+      document.getElementById("pw-input").focus();
+    }
+  };
+})();
+</script>
+
+<!-- NAV -->
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="nav-brand" href="index.html">🥘 The Johnson Cookbook</a>
+    <div class="nav-links">
+      <a class="nav-link" href="index.html">← All Recipes</a>
+    </div>
+  </div>
+</nav>
+
+<!-- MAIN -->
+<main class="page admin-page">
+  <h1>Add a New Recipe</h1>
+  <p class="subtitle">Share a family recipe by typing, scanning a photo, or describing it with your voice.</p>
+
+  <form id="recipe-form" onsubmit="submitForm(event)">
+
+    <!-- =====================================================
+         QUICK-ADD PANEL: Photo Scan & Voice Input
+         ===================================================== -->
+    <div class="form-section quick-add-section">
+      <div class="form-section-title">Quick Add</div>
+      <p class="quick-add-desc">Skip typing — import from a URL, scan a recipe card, or describe it aloud.</p>
+
+      <!-- URL IMPORT — full width, top -->
+      <div class="tool-panel url-import-panel">
+        <div class="tool-panel-title">🔗 Import from a URL</div>
+        <p class="tool-panel-desc">Paste a link from any recipe site — AllRecipes, NYT Cooking, Serious Eats, Food52, Epicurious, and most others. The recipe details will be extracted and filled in automatically.</p>
+        <div class="url-import-row">
+          <input type="url" id="url-import-input" placeholder="https://www.seriouseats.com/recipe/…" autocomplete="off">
+          <button type="button" class="btn btn-outline" id="url-import-btn" onclick="importFromURL()">Import</button>
+        </div>
+        <div class="url-import-status" id="url-import-status"></div>
+      </div>
+
+      <div class="quick-add-grid">
+
+        <!-- PHOTO SCAN -->
+        <div class="tool-panel">
+          <div class="tool-panel-title">📷 Scan a recipe card</div>
+          <p class="tool-panel-desc">Upload a photo of a recipe card or clipping. OCR will extract the text and fill the form.</p>
+          <input type="file" id="ocr-file-input" accept="image/*" style="display:none" onchange="handleOCRFile(event)">
+          <div class="upload-zone" id="ocr-drop-zone" onclick="document.getElementById('ocr-file-input').click()" role="button" tabindex="0">
+            <div class="upload-icon">🖼️</div>
+            <span class="upload-label">Drop a photo here, or click to browse</span>
+          </div>
+          <img id="ocr-preview" src="" alt="Preview" style="max-width:100%;display:none;margin-top:12px;">
+          <div class="progress-bar-wrap" id="ocr-progress-wrap">
+            <div class="progress-bar" id="ocr-progress-bar"></div>
+          </div>
+          <div class="ocr-status" id="ocr-status"></div>
+          <button type="button" class="btn btn-outline" id="ocr-scan-btn" style="margin-top:10px;display:none" onclick="runOCR()">
+            Scan &amp; extract text
+          </button>
+        </div>
+
+        <!-- VOICE INPUT -->
+        <div class="tool-panel">
+          <div class="tool-panel-title">🎙️ Describe with voice</div>
+          <p class="tool-panel-desc">Press record and describe the recipe aloud — name, ingredients, steps. The form will be filled in automatically.</p>
+          <button type="button" class="voice-btn" id="voice-btn" onclick="toggleRecording()">
+            Start recording
+          </button>
+          <div class="voice-transcript" id="voice-transcript"></div>
+          <div class="voice-status" id="voice-status">Click "Start recording" and speak clearly.</div>
+          <button type="button" class="btn btn-outline" id="voice-parse-btn"
+                  style="margin-top:10px;display:none;" onclick="parseVoiceTranscript()">
+            Fill form from transcript
+          </button>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- =====================================================
+         SECTION 1: Basic Info
+         ===================================================== -->
+    <div class="form-section">
+      <div class="form-section-title">📝 Basic Info</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="f-name">Recipe Name *</label>
+          <input type="text" id="f-name" name="name" required placeholder="e.g. Grandma's Roast Chicken">
+        </div>
+        <div class="form-group">
+          <label for="f-author">Added By</label>
+          <input type="text" id="f-author" name="author" placeholder="e.g. Monique Johnson">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="f-quantity">Serves / Yields</label>
+          <input type="text" id="f-quantity" name="quantity" placeholder="e.g. Serves 4, Yields 2 cups">
+        </div>
+        <div class="form-group">
+          <label for="f-category">Category</label>
+          <select id="f-category" name="category">
+            <option value="">— Select a category —</option>
+            <option value="appetizers">Appetizers</option>
+            <option value="baking">Baking</option>
+            <option value="basic-building-blocks">Building Blocks</option>
+            <option value="beans">Beans</option>
+            <option value="breakfasts-breads">Breakfasts & Breads</option>
+            <option value="cocktails">Cocktails</option>
+            <option value="desserts">Desserts</option>
+            <option value="salsas-dips">Dips & Salsas</option>
+            <option value="easy-weeknight-meals">Easy Weeknight</option>
+            <option value="entertaining-meals-most-preparation-can-be-done-ahead-of-time">Entertaining (make-ahead)</option>
+            <option value="seafood">Fish & Seafood</option>
+            <option value="holiday-specials">Holiday</option>
+            <option value="interesting-but-not-tried">Interesting / Want to Try</option>
+            <option value="japan-southeast-asia">Japan & SE Asia</option>
+            <option value="latin-america">Latin America</option>
+            <option value="meat">Meat</option>
+            <option value="meatballs-sausages">Meatballs & Sausages</option>
+            <option value="mediterranean">Mediterranean</option>
+            <option value="pasta-rice">Pasta & Rice</option>
+            <option value="potatoes">Potatoes</option>
+            <option value="poultry">Poultry</option>
+            <option value="regular-family-favorites">Regular Family Favorites</option>
+            <option value="sauces-relishes">Sauces & Relishes</option>
+            <option value="rice-rice-dishes">Rice Dishes</option>
+            <option value="salads">Salads & Dressings</option>
+            <option value="sandwiches">Sandwiches</option>
+            <option value="simple-but-requires-marinading-or-day-before-preparation">Simple / Make Ahead</option>
+            <option value="soups">Soups</option>
+            <option value="stews-pies">Stews & Pies</option>
+            <option value="tapas">Tapas / Small Plates</option>
+            <option value="vegetables">Vegetables</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="f-description">Brief Description</label>
+        <textarea id="f-description" name="description" rows="2" placeholder="A short description of this dish and why it's special…"></textarea>
+      </div>
+    </div>
+
+    <!-- =====================================================
+         SECTION 2: Photo
+         ===================================================== -->
+    <div class="form-section">
+      <div class="form-section-title">📸 Recipe Photo</div>
+      <div class="form-group">
+        <label>Upload Photo</label>
+        <input type="file" id="photo-file-input" accept="image/*" style="display:none" onchange="handlePhotoUpload(event)">
+        <div class="upload-zone" id="photo-drop-zone" onclick="document.getElementById('photo-file-input').click()" role="button" tabindex="0">
+          <div class="upload-icon">📷</div>
+          <span class="upload-label">Drop a photo of the finished dish, or click to browse</span>
+        </div>
+        <img id="photo-preview" alt="Recipe photo preview">
+        <p class="form-hint">Max 5 MB. JPEG or PNG. After upload, you'll get a sharable URL you can paste below.</p>
+      </div>
+      <div class="form-group">
+        <label for="f-image">Image URL</label>
+        <input type="url" id="f-image" name="image" placeholder="https://… (paste a URL or use the upload above)">
+        <p class="form-hint">If you're storing photos in Google Drive or Cloudinary, paste the direct URL here.</p>
+      </div>
+    </div>
+
+    <!-- =====================================================
+         SECTION 3: Ingredients
+         ===================================================== -->
+    <div class="form-section">
+      <div class="form-section-title">🧂 Ingredients</div>
+      <div class="form-group">
+        <label>Ingredients List</label>
+        <p class="form-hint" style="margin-bottom:8px;">Enter one ingredient per line. Use a blank line to separate sections (e.g. "For the sauce:").</p>
+        <textarea id="f-ingredients" name="ingredients" rows="10"
+                  placeholder="4 cloves garlic, minced&#10;2 tbsp olive oil&#10;1 cup chicken stock&#10;…"></textarea>
+      </div>
+    </div>
+
+    <!-- =====================================================
+         SECTION 4: Instructions
+         ===================================================== -->
+    <div class="form-section">
+      <div class="form-section-title">📋 Instructions</div>
+      <div class="form-group">
+        <label>Step-by-step Instructions</label>
+        <p class="form-hint" style="margin-bottom:8px;">Write each step on its own line. You can use blank lines to group steps.</p>
+        <textarea id="f-instructions" name="instructions" rows="12"
+                  placeholder="1. Preheat oven to 400°F.&#10;2. Season the chicken with salt and pepper.&#10;3. …"></textarea>
+      </div>
+    </div>
+
+    <!-- =====================================================
+         SECTION 5: Family Notes
+         ===================================================== -->
+    <div class="form-section">
+      <div class="form-section-title">💬 Chef's Notes & Family Story</div>
+      <div class="form-group">
+        <label for="f-notes">Notes, tips, and memories</label>
+        <textarea id="f-notes" name="notes" rows="4"
+                  placeholder="Where did this recipe come from? Any tips or variations? Who used to make it?…"></textarea>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="f-related">Related Recipes <span style="font-weight:400;color:var(--ink-faint)">(slugs, comma-separated)</span></label>
+          <input type="text" id="f-related" name="related"
+                 placeholder="basic-and-pure-chicken-stock, garlic-mashed-potatoes">
+          <p class="form-hint">Use the URL slug from the existing recipe URL.</p>
+        </div>
+        <div class="form-group">
+          <label>
+            <input type="checkbox" id="f-favorite" name="favorite" style="width:auto;margin-right:6px;">
+            Mark as a Family Favorite ⭐
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- =====================================================
+         SUBMIT
+         ===================================================== -->
+    <div class="form-section">
+      <div class="form-section-title">✅ Save Recipe</div>
+      <p style="font-size:0.875rem;color:var(--ink-faint);margin-bottom:16px;">
+        The recipe will be sent to your Google Sheet via the Apps Script webhook. See <a href="README.md">README.md</a> for setup.
+      </p>
+      <div class="form-submit-row">
+        <button type="submit" class="btn btn-primary" id="submit-btn">
+          💾 Save Recipe
+        </button>
+        <button type="button" class="btn btn-outline" onclick="clearForm()">🗑 Clear Form</button>
+        <span class="submit-status" id="submit-status"></span>
+      </div>
+    </div>
+
+  </form>
+</main>
+
+<!-- FOOTER -->
+<footer style="background:var(--white);border-top:1px solid var(--border);padding:28px 24px;text-align:center;color:var(--ink-faint);font-size:0.82rem;">
+  <p>The Johnson Cookbook &mdash; A family tradition.</p>
+</footer>
+
+<script>
+// ============================================================
+//  URL IMPORT — schema.org/Recipe parser
+// ============================================================
+
+async function importFromURL() {
+  const input = document.getElementById("url-import-input");
+  const statusEl = document.getElementById("url-import-status");
+  const btn = document.getElementById("url-import-btn");
+  const url = input.value.trim();
+
+  if (!url) { statusEl.className = "url-import-status error"; statusEl.textContent = "Paste a URL first."; return; }
+
+  btn.disabled = true;
+  btn.textContent = "Importing…";
+  statusEl.className = "url-import-status";
+  statusEl.textContent = "Fetching page…";
+
+  try {
+    // allorigins proxies the request to bypass CORS
+    const proxy = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+    const res = await fetch(proxy);
+    if (!res.ok) throw new Error("Could not reach that URL (HTTP " + res.status + ")");
+    const data = await res.json();
+    const html = data.contents;
+    if (!html) throw new Error("Page returned empty content");
+
+    statusEl.textContent = "Parsing recipe data…";
+    const recipe = extractSchemaRecipe(html);
+
+    if (recipe) {
+      populateFromSchema(recipe, url);
+      statusEl.className = "url-import-status success";
+      statusEl.textContent = "✓ Imported! Review the fields below and save when ready.";
+    } else {
+      // Fall back to basic meta tag extraction
+      const meta = extractMetaFallback(html, url);
+      if (meta.name) {
+        populateFromMeta(meta, url);
+        statusEl.className = "url-import-status warn";
+        statusEl.textContent = "⚠ Imported basic info only — this site doesn't publish structured recipe data. Fill in ingredients and instructions manually.";
+      } else {
+        throw new Error("No recipe data found on this page. The site may require a login or block automated access.");
+      }
+    }
+  } catch (err) {
+    statusEl.className = "url-import-status error";
+    statusEl.textContent = "✗ " + err.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Import";
+  }
+}
+
+// ---- Extract schema.org/Recipe from JSON-LD ----
+function extractSchemaRecipe(html) {
+  const scriptRe = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  let m;
+  while ((m = scriptRe.exec(html)) !== null) {
+    try {
+      const json = JSON.parse(m[1]);
+      const candidates = Array.isArray(json) ? json : [json];
+      for (const item of candidates) {
+        // Direct Recipe object
+        if (item["@type"] === "Recipe") return item;
+        // Recipe nested in an array @type
+        if (Array.isArray(item["@type"]) && item["@type"].includes("Recipe")) return item;
+        // Recipe inside @graph
+        if (item["@graph"]) {
+          const found = item["@graph"].find(n =>
+            n["@type"] === "Recipe" ||
+            (Array.isArray(n["@type"]) && n["@type"].includes("Recipe"))
+          );
+          if (found) return found;
+        }
+      }
+    } catch {}
+  }
+  return null;
+}
+
+// ---- Fallback: pull title + description from <meta> tags ----
+function extractMetaFallback(html, url) {
+  const get = (re) => { const m = html.match(re); return m ? m[1].trim() : ""; };
+  return {
+    name:        get(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i)
+               || get(/<title[^>]*>([^<]+)<\/title>/i),
+    description: get(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i)
+               || get(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i),
+    image:       get(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i),
+  };
+}
+
+// ---- Populate form from schema.org Recipe ----
+function populateFromSchema(r, sourceUrl) {
+  const set = (id, val) => { if (val && !document.getElementById(id).value) document.getElementById(id).value = val; };
+
+  set("f-name", r.name);
+  set("f-description", stripHtmlTags(r.description || ""));
+
+  // Yield
+  const yld = r.recipeYield;
+  if (yld) set("f-quantity", Array.isArray(yld) ? yld.join(", ") : String(yld));
+
+  // Image
+  const img = r.image;
+  if (img) {
+    const url = typeof img === "string" ? img
+      : Array.isArray(img) ? (typeof img[0] === "string" ? img[0] : img[0]?.url || "")
+      : img.url || img["@id"] || "";
+    set("f-image", url);
+  }
+
+  // Author (don't overwrite if user already filled in)
+  const auth = r.author;
+  if (auth) {
+    const name = typeof auth === "string" ? auth
+      : Array.isArray(auth) ? (auth[0]?.name || auth[0] || "")
+      : auth.name || "";
+    set("f-author", stripHtmlTags(String(name)));
+  }
+
+  // Ingredients
+  if (r.recipeIngredient?.length) {
+    set("f-ingredients", r.recipeIngredient.map(stripHtmlTags).join("\n"));
+  }
+
+  // Instructions
+  if (r.recipeInstructions) {
+    const raw = r.recipeInstructions;
+    const steps = [];
+    const parseStep = (s) => typeof s === "string" ? s : s.text || s.name || "";
+
+    if (Array.isArray(raw)) {
+      raw.forEach((item, i) => {
+        if (item["@type"] === "HowToSection") {
+          if (item.name) steps.push("\n" + item.name.toUpperCase());
+          (item.itemListElement || []).forEach(s => {
+            const t = parseStep(s).trim(); if (t) steps.push(t);
+          });
+        } else {
+          const t = parseStep(item).trim(); if (t) steps.push(t);
+        }
+      });
+    } else {
+      steps.push(stripHtmlTags(String(raw)));
+    }
+    set("f-instructions", steps.join("\n\n"));
+  }
+
+  // Notes: add source credit
+  const notesEl = document.getElementById("f-notes");
+  const credit = `Source: ${sourceUrl}`;
+  notesEl.value = notesEl.value ? notesEl.value + "\n\n" + credit : credit;
+}
+
+// ---- Populate from meta fallback ----
+function populateFromMeta(meta, sourceUrl) {
+  const set = (id, val) => { if (val && !document.getElementById(id).value) document.getElementById(id).value = val; };
+  set("f-name", meta.name);
+  set("f-description", meta.description);
+  set("f-image", meta.image);
+  const notesEl = document.getElementById("f-notes");
+  notesEl.value = "Source: " + sourceUrl;
+}
+
+function stripHtmlTags(s) {
+  return String(s || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+// ============================================================
+//  PHOTO UPLOAD HANDLER
+// ============================================================
+
+function handlePhotoUpload(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = evt => {
+    const prev = document.getElementById("photo-preview");
+    prev.src = evt.target.result;
+    prev.style.display = "block";
+    // Also offer to use the local data URL temporarily
+    document.getElementById("f-image").value = "";
+    document.getElementById("f-image").placeholder = "(local image selected — add to Google Drive/Cloudinary for a permanent URL)";
+  };
+  reader.readAsDataURL(file);
+}
+
+// Drag-and-drop for photo zone
+const photoZone = document.getElementById("photo-drop-zone");
+photoZone.addEventListener("dragover", e => { e.preventDefault(); photoZone.classList.add("dragover"); });
+photoZone.addEventListener("dragleave", () => photoZone.classList.remove("dragover"));
+photoZone.addEventListener("drop", e => {
+  e.preventDefault(); photoZone.classList.remove("dragover");
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith("image/")) handlePhotoUpload({target:{files:[file]}});
+});
+
+// ============================================================
+//  OCR: SCAN RECIPE FROM PHOTO
+// ============================================================
+
+let ocrImageFile = null;
+
+function handleOCRFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  ocrImageFile = file;
+  const reader = new FileReader();
+  reader.onload = evt => {
+    const prev = document.getElementById("ocr-preview");
+    prev.src = evt.target.result;
+    prev.style.display = "block";
+  };
+  reader.readAsDataURL(file);
+  document.getElementById("ocr-scan-btn").style.display = "flex";
+  document.getElementById("ocr-status").textContent = "Image loaded. Click 'Scan & Extract Text' to start OCR.";
+}
+
+// Drag-and-drop for OCR zone
+const ocrZone = document.getElementById("ocr-drop-zone");
+ocrZone.addEventListener("dragover", e => { e.preventDefault(); ocrZone.classList.add("dragover"); });
+ocrZone.addEventListener("dragleave", () => ocrZone.classList.remove("dragover"));
+ocrZone.addEventListener("drop", e => {
+  e.preventDefault(); ocrZone.classList.remove("dragover");
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith("image/")) handleOCRFile({target:{files:[file]}});
+});
+
+async function runOCR() {
+  if (!ocrImageFile) { alert("Please upload an image first."); return; }
+  const statusEl = document.getElementById("ocr-status");
+  const progressWrap = document.getElementById("ocr-progress-wrap");
+  const progressBar = document.getElementById("ocr-progress-bar");
+  const btn = document.getElementById("ocr-scan-btn");
+
+  btn.disabled = true;
+  progressWrap.style.display = "block";
+  statusEl.classList.add("active");
+  statusEl.textContent = "Initializing OCR engine…";
+
+  try {
+    const worker = await Tesseract.createWorker("eng", 1, {
+      logger: m => {
+        if (m.status === "recognizing text") {
+          const pct = Math.round(m.progress * 100);
+          progressBar.style.width = pct + "%";
+          statusEl.textContent = `Scanning… ${pct}%`;
+        } else if (m.status === "loading tesseract core") {
+          statusEl.textContent = "Loading OCR engine…";
+        } else if (m.status === "initializing tesseract") {
+          statusEl.textContent = "Initializing…";
+        } else if (m.status === "loading language traineddata") {
+          statusEl.textContent = "Loading language data…";
+        }
+      }
+    });
+
+    const { data: { text } } = await worker.recognize(ocrImageFile);
+    await worker.terminate();
+
+    progressBar.style.width = "100%";
+    statusEl.textContent = "✅ Scan complete! Parsing recipe structure…";
+
+    // Parse the OCR text into form fields
+    parseOCRText(text);
+
+    setTimeout(() => {
+      progressWrap.style.display = "none";
+      statusEl.classList.remove("active");
+      statusEl.textContent = "Done! Check the form fields below — edit anything that looks off.";
+      btn.disabled = false;
+    }, 1200);
+
+  } catch (err) {
+    statusEl.classList.remove("active");
+    statusEl.textContent = "OCR failed: " + err.message;
+    progressWrap.style.display = "none";
+    btn.disabled = false;
+  }
+}
+
+// ---- Parse OCR text into form fields ----
+function parseOCRText(rawText) {
+  const lines = rawText.split("\n").map(l => l.trim()).filter(Boolean);
+  if (!lines.length) return;
+
+  // Heuristic parsing: look for ingredients section and instructions section
+  const text = rawText;
+
+  // Try to identify title (first non-empty line or biggest text, first line that looks like a name)
+  const titleLine = lines.find(l => l.length > 2 && l.length < 80 && !l.match(/^\d/));
+  if (titleLine && !document.getElementById("f-name").value) {
+    document.getElementById("f-name").value = titleLine;
+  }
+
+  // Find ingredients block
+  const ingKeywords = /ingredient|you.ll need|what you need/i;
+  const instrKeywords = /instruction|direction|method|preparation|step|how to/i;
+  const servesKeyword = /serve|yield|makes|portion/i;
+
+  let ingStart = -1, instrStart = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (ingKeywords.test(lines[i]) && ingStart === -1) ingStart = i + 1;
+    if (instrKeywords.test(lines[i]) && instrStart === -1) instrStart = i + 1;
+    if (servesKeyword.test(lines[i]) && !document.getElementById("f-quantity").value) {
+      document.getElementById("f-quantity").value = lines[i];
+    }
+  }
+
+  if (ingStart === -1) ingStart = 1; // fallback: start from line 2
+  if (instrStart === -1) instrStart = Math.floor(lines.length / 2);
+
+  // If we found both, split them
+  if (ingStart < instrStart) {
+    const ingLines = lines.slice(ingStart, instrStart).filter(l => l.length > 2);
+    const instrLines = lines.slice(instrStart).filter(l => l.length > 2);
+    if (ingLines.length && !document.getElementById("f-ingredients").value.trim()) {
+      document.getElementById("f-ingredients").value = ingLines.join("\n");
+    }
+    if (instrLines.length && !document.getElementById("f-instructions").value.trim()) {
+      document.getElementById("f-instructions").value = instrLines.join("\n");
+    }
+  } else {
+    // Just dump all text into ingredients for manual review
+    if (!document.getElementById("f-ingredients").value.trim()) {
+      document.getElementById("f-ingredients").value = lines.slice(1).join("\n");
+    }
+  }
+}
+
+// ============================================================
+//  VOICE INPUT
+// ============================================================
+
+let recognition = null;
+let isRecording = false;
+let voiceFullTranscript = "";
+
+function toggleRecording() {
+  if (isRecording) {
+    stopRecording();
+  } else {
+    startRecording();
+  }
+}
+
+function startRecording() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    document.getElementById("voice-status").textContent = "❌ Voice input not supported in this browser. Try Chrome or Edge.";
+    return;
+  }
+
+  voiceFullTranscript = "";
+  recognition = new SpeechRecognition();
+  recognition.lang = "en-US";
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.maxAlternatives = 1;
+
+  const transcriptEl = document.getElementById("voice-transcript");
+  transcriptEl.style.display = "block";
+  transcriptEl.textContent = "Listening…";
+
+  recognition.onresult = e => {
+    let interim = "";
+    let final = "";
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const text = e.results[i][0].transcript;
+      if (e.results[i].isFinal) final += text + " ";
+      else interim += text;
+    }
+    voiceFullTranscript += final;
+    transcriptEl.textContent = voiceFullTranscript + interim;
+  };
+
+  recognition.onerror = e => {
+    document.getElementById("voice-status").textContent = "Microphone error: " + e.error;
+    stopRecording();
+  };
+
+  recognition.onend = () => {
+    if (isRecording) recognition.start(); // keep going until user stops
+  };
+
+  recognition.start();
+  isRecording = true;
+
+  const btn = document.getElementById("voice-btn");
+  btn.textContent = "⏹ Stop Recording";
+  btn.classList.add("recording");
+  document.getElementById("voice-status").textContent = "🎙 Recording… speak clearly about the recipe.";
+  document.getElementById("voice-parse-btn").style.display = "none";
+}
+
+function stopRecording() {
+  if (recognition) { recognition.stop(); recognition = null; }
+  isRecording = false;
+  const btn = document.getElementById("voice-btn");
+  btn.textContent = "🎙️ Start Recording";
+  btn.classList.remove("recording");
+  document.getElementById("voice-status").textContent = "Recording stopped.";
+  if (voiceFullTranscript.trim()) {
+    document.getElementById("voice-parse-btn").style.display = "flex";
+    document.getElementById("voice-status").textContent = "Done! Click 'Fill Form from Transcript' to populate the fields.";
+  }
+}
+
+// ---- Parse voice transcript into form fields ----
+function parseVoiceTranscript() {
+  const text = voiceFullTranscript.trim();
+  if (!text) return;
+
+  // Simple NLP heuristics to extract recipe parts
+  const lower = text.toLowerCase();
+
+  // Try to find recipe name — "recipe is called X", "recipe for X", "this is X"
+  const namePatterns = [
+    /(?:recipe (?:is called|for|named)|this is (?:a |an |my )?)\s*([A-Z][^.!?\n]{3,60})/i,
+    /^([A-Z][A-Za-z '&]+?)(?:\.|,|\n|recipe)/i,
+  ];
+  for (const pat of namePatterns) {
+    const m = text.match(pat);
+    if (m && !document.getElementById("f-name").value) {
+      document.getElementById("f-name").value = m[1].trim();
+      break;
+    }
+  }
+
+  // Serves/yields
+  const servesM = text.match(/(?:serve[sd]?|yield[sd]?|make[sd]?|for)\s+(\d+\s*(?:to\s*\d+)?\s*(?:people|person|servings?|portions?)?)/i);
+  if (servesM && !document.getElementById("f-quantity").value) {
+    document.getElementById("f-quantity").value = "Serves " + servesM[1].trim();
+  }
+
+  // Extract ingredients — look for "ingredients" keyword, then list items
+  const ingMatch = lower.match(/ingredients?[:\s]+([\s\S]*?)(?=instructions?|directions?|steps?|method|how to|$)/i);
+  if (ingMatch && !document.getElementById("f-ingredients").value.trim()) {
+    // Split by "and", commas used as list separators, numbered items
+    const raw = text.substring(lower.indexOf("ingredient"), lower.indexOf("ingredient") + ingMatch[0].length);
+    const items = raw.split(/[,\n]|(?:\d+\.)/)
+      .map(s => s.replace(/^ingredients?[:\s]*/i, "").trim())
+      .filter(s => s.length > 2);
+    document.getElementById("f-ingredients").value = items.join("\n");
+  }
+
+  // Extract instructions
+  const instrMatch = lower.match(/(?:instructions?|directions?|steps?|method|how to)[:\s]+([\s\S]*)/i);
+  if (instrMatch && !document.getElementById("f-instructions").value.trim()) {
+    const raw = text.substring(lower.indexOf(instrMatch[0].split(/[:\s]/)[0]));
+    document.getElementById("f-instructions").value = raw
+      .replace(/^(?:instructions?|directions?|steps?|method|how to)[:\s]*/i, "")
+      .trim();
+  }
+
+  // If no keyword sections found, put all text into a notes field for review
+  if (!document.getElementById("f-ingredients").value.trim() && !document.getElementById("f-instructions").value.trim()) {
+    document.getElementById("f-notes").value = text;
+    document.getElementById("voice-status").textContent = "Transcript added to Notes — no ingredient/instruction sections detected. Edit the fields manually.";
+    return;
+  }
+
+  document.getElementById("voice-status").textContent = "✅ Fields filled from transcript! Review and edit below.";
+}
+
+// ============================================================
+//  FORM SUBMIT → Google Apps Script
+// ============================================================
+
+function submitForm(e) {
+  e.preventDefault();
+  const status = document.getElementById("submit-status");
+  const btn = document.getElementById("submit-btn");
+
+  if (!CONFIG.APPS_SCRIPT_URL || CONFIG.APPS_SCRIPT_URL.includes("YOUR_")) {
+    // No Apps Script configured — offer download as CSV row instead
+    downloadAsCSV();
+    status.className = "submit-status success";
+    status.textContent = "✅ Downloaded! Paste this row into your Google Sheet.";
+    return;
+  }
+
+  const data = collectFormData();
+  btn.disabled = true;
+  status.className = "submit-status";
+  status.textContent = "Saving…";
+
+  fetch(CONFIG.APPS_SCRIPT_URL, {
+    method: "POST",
+    mode: "no-cors",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  })
+  .then(() => {
+    status.className = "submit-status success";
+    status.textContent = "✅ Recipe saved! It will appear in the cookbook after the sheet refreshes.";
+    btn.disabled = false;
+  })
+  .catch(err => {
+    status.className = "submit-status error";
+    status.textContent = "❌ Error: " + err.message;
+    btn.disabled = false;
+  });
+}
+
+function collectFormData() {
+  const name = document.getElementById("f-name").value.trim();
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  return {
+    Name:               name,
+    Slug:               slug,
+    Author:             document.getElementById("f-author").value.trim().toLowerCase().replace(/\s+/g,"-"),
+    Quantity:           document.getElementById("f-quantity").value.trim(),
+    "Brief description": document.getElementById("f-description").value.trim(),
+    Category:           document.getElementById("f-category").value,
+    "Main image":        document.getElementById("f-image").value.trim(),
+    Ingredients:        plainToHtml(document.getElementById("f-ingredients").value),
+    Instructions:       plainToHtml(document.getElementById("f-instructions").value),
+    "Related recipes":  document.getElementById("f-related").value.trim(),
+    "Favorite?":        document.getElementById("f-favorite").checked ? "true" : "false",
+    "Chef's notes":     plainToHtml(document.getElementById("f-notes").value),
+    "Created On":       new Date().toUTCString(),
+    Draft:              "false",
+    Archived:           "false",
+  };
+}
+
+// Convert plain textarea text to simple HTML paragraphs
+function plainToHtml(text) {
+  if (!text) return "";
+  return text.split("\n").map(l => l.trim())
+    .filter(l => l)
+    .map(l => `<p>${l.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</p>`)
+    .join("");
+}
+
+// Fallback: download as CSV row
+function downloadAsCSV() {
+  const d = collectFormData();
+  const headers = ["Name","Slug","Author","Quantity","Brief description","Category","Main image","Ingredients","Instructions","Related recipes","Favorite?","Chef's notes","Created On","Draft","Archived"];
+  const row = headers.map(h => `"${(d[h]||"").replace(/"/g,'""')}"`).join(",");
+  const csv = headers.join(",") + "\n" + row;
+  const blob = new Blob([csv], {type:"text/csv"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "new-recipe.csv";
+  a.click();
+}
+
+function clearForm() {
+  if (!confirm("Clear all fields?")) return;
+  document.getElementById("recipe-form").reset();
+  document.getElementById("photo-preview").style.display = "none";
+  document.getElementById("ocr-preview").style.display = "none";
+  document.getElementById("voice-transcript").style.display = "none";
+  document.getElementById("submit-status").textContent = "";
+  voiceFullTranscript = "";
+}
+</script>
+</body>
+</html>
