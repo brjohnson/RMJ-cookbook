@@ -266,11 +266,12 @@ function renderFromData(rows) {
         <h2 style="font-family:var(--font-serif);margin-bottom:16px;">Related recipes</h2>
         <div class="related-grid">
           ${relatedRecipes.map(r => `
-          <a class="recipe-card" href="recipe.html?id=${encodeURIComponent(r.slug)}">
+          <a class="recipe-card${r.image ? "" : " no-image"}" href="recipe.html?id=${encodeURIComponent(r.slug)}">
+            ${r.image ? `
             <div class="card-image-wrap">
-              <img class="card-image" src="${escHtml(r.image||CONFIG.PLACEHOLDER_IMAGE)}" alt="${escHtml(r.name)}"
-                   loading="lazy" onerror="this.src='${CONFIG.PLACEHOLDER_IMAGE}'">
-            </div>
+              <img class="card-image" src="${escHtml(r.image)}" alt="${escHtml(r.name)}"
+                   loading="lazy" onload="smartCrop(this)" onerror="this.parentElement.remove()">
+            </div>` : ""}
             <div class="card-body">
               <div class="card-title">${escHtml(r.name)}</div>
               ${r.description ? `<div class="card-desc">${escHtml(r.description)}</div>` : ""}
