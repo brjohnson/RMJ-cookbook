@@ -551,6 +551,9 @@ async function runOCR() {
 
   try {
     const worker = await Tesseract.createWorker("eng", 1, {
+      workerPath: "https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/worker.min.js",
+      langPath:   "https://tessdata.projectnaptha.com/4.0.0",
+      corePath:   "https://cdn.jsdelivr.net/npm/tesseract.js-core@4.0.3/tesseract-core-simd-lstm.wasm.js",
       logger: m => {
         if (m.status === "recognizing text") {
           const pct = Math.round(m.progress * 100);
@@ -584,7 +587,7 @@ async function runOCR() {
 
   } catch (err) {
     statusEl.classList.remove("active");
-    statusEl.textContent = "OCR failed: " + err.message;
+    statusEl.textContent = "OCR failed: " + (err?.message || String(err) || "unknown error — check your internet connection and try again");
     progressWrap.style.display = "none";
     btn.disabled = false;
   }
