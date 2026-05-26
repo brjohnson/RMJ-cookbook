@@ -1,0 +1,7 @@
+# Migration script — contains API credentials, do not commit
+migrate_images.py
+updated_recipes.csv
+migration_log.txt
+
+# Apps Script source (deploy via script.google.com, not git)
+apps-script.gs

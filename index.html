@@ -19,8 +19,8 @@
     <a class="nav-brand" href="index.html">🥘 The Johnson Cookbook</a>
     <div class="nav-links">
       <a class="nav-link active" href="index.html">All Recipes</a>
-      <a class="nav-link" href="index.html?filter=regular-family-favorites">❤ Favorites</a>
-      <a class="nav-link nav-link-primary" href="admin.html">+ Add Recipe</a>
+      <a class="nav-link" href="favorites.html">★ My Favorites</a>
+      <a class="nav-link nav-link-primary" href="admin.html">Admin</a>
     </div>
   </div>
 </nav>
@@ -58,9 +58,6 @@
         <option value="">More…</option>
         <!-- options injected by JS -->
       </select>
-      <button class="fav-btn" id="fav-filter-btn">
-        <span>⭐</span> Favorites
-      </button>
     </div>
 
     <!-- VIEW CONTROLS -->
@@ -73,15 +70,14 @@
       </div>
       <div class="vc-divider"></div>
       <div class="vc-group">
+        <button class="vc-btn" id="group-toggle" onclick="toggleGroup()">Group by category</button>
+      </div>
+      <div class="vc-divider"></div>
+      <div class="vc-group">
         <span class="vc-label">Photos</span>
         <button class="vc-btn active" data-photo="all" onclick="setPhoto('all')">All</button>
         <button class="vc-btn" data-photo="with" onclick="setPhoto('with')">With photo</button>
         <button class="vc-btn" data-photo="without" onclick="setPhoto('without')">No photo</button>
-      </div>
-      <div class="vc-divider"></div>
-      <div class="vc-group">
-        <button class="vc-btn" id="group-toggle" onclick="toggleGroup()">Group by category</button>
-        <button class="vc-btn" id="collapse-all-btn" onclick="collapseAll()" style="display:none">Collapse all</button>
       </div>
     </div>
 
@@ -168,7 +164,7 @@ const PRIORITY_CATS = [
 
 let ALL_RECIPES = [];
 let activeCategory = null;
-let showFavsOnly = false;
+const showFavsOnly = false;
 let searchQuery = "";
 let sortMode = "az";        // "az" | "za" | "newest"
 let groupByCategory = false;
@@ -413,11 +409,6 @@ function buildFilters() {
     if (chip) chip.classList.add("active");
   }
 
-  document.getElementById("fav-filter-btn").onclick = () => {
-    showFavsOnly = !showFavsOnly;
-    document.getElementById("fav-filter-btn").classList.toggle("active", showFavsOnly);
-    renderGrid();
-  };
 
   // --- Spotlight: 3 most recently added recipes ---
   buildSpotlight();
@@ -474,7 +465,6 @@ function filteredRecipes() {
   let result = ALL_RECIPES.filter(r => {
     if (r.name.toLowerCase().includes("need") && r.instructions.toLowerCase().includes("need data")) return false; // skip stubs
     if (activeCategory && !r.categories.includes(activeCategory)) return false;
-    if (showFavsOnly && !favs.has(r.slug) && !r.favorite) return false;
     if (photoFilter === "with"    && !r.image) return false;
     if (photoFilter === "without" &&  r.image) return false;
     if (searchQuery) {
@@ -500,7 +490,7 @@ function filteredRecipes() {
 const STAR_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path class="star-path" d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`;
 
 function renderCard(r, favs) {
-  const isFav = favs.has(r.slug) || r.favorite;
+  const isFav = favs.has(r.slug);
   const primaryCat = r.categories[0] || null;
   const catLabel = primaryCatLabel(r.categories);
   const desc = r.description || stripHtml(r.notes).slice(0, 120);
@@ -541,6 +531,7 @@ function renderCard(r, favs) {
     </a>`;
 }
 
+
 function renderGrid() {
   const recipes = filteredRecipes();
   const favs = getFavs();
@@ -577,9 +568,12 @@ function renderGrid() {
       return la.localeCompare(lb);
     });
     grid.classList.add("is-grouped");
-    grid.innerHTML = sortedGroups.map(([cat, recs]) => {
+    grid.innerHTML = sortedGroups.map(([cat, recs], idx) => {
       const label = CATEGORIES[cat] || cat.replace(/-/g, " ");
       const cs = categoryStyle(cat);
+      const collapseBtn = idx === 0
+        ? `<button id="collapse-all-btn" class="cat-collapse-all-btn" onclick="event.stopPropagation();collapseAll()">Collapse all</button>`
+        : "";
       return `
         <div class="cat-section">
           <div class="cat-section-header" onclick="toggleCatSection(this)">
@@ -588,6 +582,7 @@ function renderGrid() {
             </span>
             <span class="cat-section-pill" style="background:${cs.bg};color:${cs.text}">${escHtml(label)}</span>
             <span class="cat-section-count">${recs.length} recipe${recs.length !== 1 ? "s" : ""}</span>
+            ${collapseBtn}
           </div>
           <div class="cat-section-body">
             <div class="cat-section-body-inner">
@@ -620,7 +615,6 @@ function setPhoto(mode) {
 function toggleGroup() {
   groupByCategory = !groupByCategory;
   document.getElementById("group-toggle").classList.toggle("active", groupByCategory);
-  document.getElementById("collapse-all-btn").style.display = groupByCategory ? "" : "none";
   renderGrid();
 }
 

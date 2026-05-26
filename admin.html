@@ -10,6 +10,8 @@
   <link rel="stylesheet" href="style.css">
   <!-- Tesseract.js for OCR (scans printed/handwritten recipe images) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js"></script>
+  <!-- PapaParse for CSV parsing in edit mode -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 </head>
 <body>
 
@@ -76,14 +78,32 @@
     <a class="nav-brand" href="index.html">🥘 The Johnson Cookbook</a>
     <div class="nav-links">
       <a class="nav-link" href="index.html">← All Recipes</a>
+      <a class="nav-link" href="favorites.html">★ My Favorites</a>
     </div>
   </div>
 </nav>
 
 <!-- MAIN -->
 <main class="page admin-page">
-  <h1>Add a New Recipe</h1>
-  <p class="subtitle">Share a family recipe by typing, scanning a photo, or describing it with your voice.</p>
+  <h1 id="page-heading">Add a New Recipe</h1>
+  <p class="subtitle" id="page-subtitle">Share a family recipe by typing, scanning a photo, or describing it with your voice.</p>
+
+  <!-- Mode toggle -->
+  <div class="mode-toggle-row">
+    <button type="button" class="mode-btn active" id="mode-add-btn" onclick="switchMode('add')">Add recipe</button>
+    <button type="button" class="mode-btn" id="mode-edit-btn" onclick="switchMode('edit')">Edit recipe</button>
+  </div>
+
+  <!-- Edit search (hidden in add mode) -->
+  <div class="edit-search-section" id="edit-search-section" style="display:none">
+    <input type="text" class="edit-search-input" id="edit-search-input"
+           placeholder="Search for a recipe to edit…" oninput="searchRecipes(this.value)" autocomplete="off">
+    <div class="edit-results" id="edit-results"></div>
+    <div class="edit-selected-banner" id="edit-selected-banner" style="display:none">
+      Editing: <strong id="edit-selected-name"></strong>
+      <button type="button" class="edit-change-btn" onclick="clearEditSelection()">Change recipe</button>
+    </div>
+  </div>
 
   <form id="recipe-form" onsubmit="submitForm(event)">
 
@@ -292,7 +312,7 @@
       </p>
       <div class="form-submit-row">
         <button type="submit" class="btn btn-primary" id="submit-btn">
-          💾 Save Recipe
+          💾 <span id="submit-btn-label">Save Recipe</span>
         </button>
         <button type="button" class="btn btn-outline" onclick="clearForm()">🗑 Clear Form</button>
         <span class="submit-status" id="submit-status"></span>
@@ -797,7 +817,7 @@ function submitForm(e) {
   const data = collectFormData();
   btn.disabled = true;
   status.className = "submit-status";
-  status.textContent = "Saving…";
+  status.textContent = editMode ? "Saving changes…" : "Saving…";
 
   fetch(CONFIG.APPS_SCRIPT_URL, {
     method: "POST",
@@ -807,7 +827,9 @@ function submitForm(e) {
   })
   .then(() => {
     status.className = "submit-status success";
-    status.textContent = "✅ Recipe saved! It will appear in the cookbook after the sheet refreshes.";
+    status.textContent = editMode
+      ? "✅ Changes saved! The cookbook will reflect them after the sheet refreshes."
+      : "✅ Recipe saved! It will appear in the cookbook after the sheet refreshes.";
     btn.disabled = false;
   })
   .catch(err => {
@@ -819,8 +841,10 @@ function submitForm(e) {
 
 function collectFormData() {
   const name = document.getElementById("f-name").value.trim();
-  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const slug = editSlug || name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   return {
+    action:             editMode ? "update" : "add",
+    originalSlug:       editSlug || "",
     Name:               name,
     Slug:               slug,
     Author:             document.getElementById("f-author").value.trim().toLowerCase().replace(/\s+/g,"-"),
@@ -869,6 +893,151 @@ function clearForm() {
   document.getElementById("voice-transcript").style.display = "none";
   document.getElementById("submit-status").textContent = "";
   voiceFullTranscript = "";
+}
+
+// ============================================================
+//  EDIT MODE
+// ============================================================
+
+const CATEGORIES_MAP = {
+  "appetizers":"Appetizers","baking":"Baking","basic-building-blocks":"Building Blocks","beans":"Beans",
+  "breakfasts-breads":"Breakfasts & Breads","cocktails":"Cocktails","desserts":"Desserts",
+  "salsas-dips":"Dips & Salsas","easy-weeknight-meals":"Easy Weeknight",
+  "entertaining-meals-most-preparation-can-be-done-ahead-of-time":"Entertaining",
+  "seafood":"Seafood","holiday-specials":"Holiday","interesting-but-not-tried":"Want to Try",
+  "japan-southeast-asia":"Japan & SE Asia","latin-america":"Latin America","meat":"Meat",
+  "meatballs-sausages":"Meatballs & Sausages","mediterranean":"Mediterranean","pasta-rice":"Pasta & Rice",
+  "potatoes":"Potatoes","poultry":"Poultry","regular-family-favorites":"Family Favorites",
+  "sauces-relishes":"Sauces & Relishes","rice-rice-dishes":"Rice Dishes","salads":"Salads",
+  "sandwiches":"Sandwiches","simple-but-requires-marinading-or-day-before-preparation":"Make Ahead",
+  "soups":"Soups","stews-pies":"Stews & Pies","tapas":"Tapas","vegetables":"Vegetables"
+};
+
+function escHtml(s) {
+  return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+// Strip HTML tags → plain text for textarea display
+function htmlToPlain(html) {
+  if (!html) return "";
+  return html
+    .replace(/<\/p>/gi, "\n").replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/li>/gi, "\n").replace(/<li[^>]*>/gi, "")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">")
+    .replace(/&quot;/g,'"').replace(/&#39;/g,"'")
+    .replace(/\n{3,}/g,"\n\n").trim();
+}
+
+// "calvin-johnson" → "Calvin Johnson"
+function slugToDisplayName(slug) {
+  return (slug||"").replace(/-/g," ").replace(/\b\w/g,c=>c.toUpperCase());
+}
+
+let editMode = false;
+let editSlug = null;
+let allRecipesCache = null;
+let searchMatches = [];
+
+function switchMode(mode) {
+  editMode = mode === "edit";
+  document.getElementById("mode-add-btn").classList.toggle("active", !editMode);
+  document.getElementById("mode-edit-btn").classList.toggle("active", editMode);
+  document.getElementById("edit-search-section").style.display = editMode ? "block" : "none";
+  document.querySelector(".quick-add-section").style.display = editMode ? "none" : "";
+  document.getElementById("page-heading").textContent = editMode ? "Edit a Recipe" : "Add a New Recipe";
+  document.getElementById("page-subtitle").textContent = editMode
+    ? "Search for a recipe, make your changes, and save."
+    : "Share a family recipe by typing, scanning a photo, or describing it with your voice.";
+  document.getElementById("submit-btn-label").textContent = editMode ? "Save Changes" : "Save Recipe";
+  document.getElementById("submit-status").textContent = "";
+
+  if (editMode) {
+    if (!allRecipesCache) loadRecipesForSearch();
+    // Clear form fields cleanly without the confirm prompt
+    document.getElementById("recipe-form").reset();
+    editSlug = null;
+  } else {
+    editSlug = null;
+    clearEditSelection();
+  }
+}
+
+function loadRecipesForSearch() {
+  const resultsEl = document.getElementById("edit-results");
+  resultsEl.innerHTML = '<p style="padding:10px 14px;font-size:0.82rem;color:var(--ink-faint)">Loading recipes…</p>';
+  Papa.parse(CONFIG.SHEET_CSV_URL, {
+    download: true, header: true,
+    complete: result => {
+      allRecipesCache = result.data.filter(r => r["Name"]?.trim());
+      resultsEl.innerHTML = "";
+    },
+    error: () => {
+      resultsEl.innerHTML = '<p style="padding:10px 14px;font-size:0.82rem;color:#c0392b">Could not load recipes — check your connection.</p>';
+    }
+  });
+}
+
+function searchRecipes(query) {
+  const resultsEl = document.getElementById("edit-results");
+  if (!query.trim()) { resultsEl.innerHTML = ""; searchMatches = []; return; }
+  if (!allRecipesCache) return;
+  const q = query.toLowerCase();
+  searchMatches = allRecipesCache.filter(r => r["Name"]?.toLowerCase().includes(q)).slice(0, 8);
+  if (!searchMatches.length) {
+    resultsEl.innerHTML = '<p style="padding:10px 14px;font-size:0.82rem;color:var(--ink-faint)">No recipes found.</p>';
+    return;
+  }
+  resultsEl.innerHTML = searchMatches.map((r, i) => {
+    const catSlug = (r["Category"]||"").split(";")[0].trim();
+    const catLabel = CATEGORIES_MAP[catSlug] || catSlug.replace(/-/g," ") || "—";
+    return `<div class="edit-result-item" onclick="selectRecipeForEdit(${i})">
+      <span class="edit-result-name">${escHtml(r["Name"])}</span>
+      <span class="edit-result-cat">${escHtml(catLabel)}</span>
+    </div>`;
+  }).join("");
+}
+
+function selectRecipeForEdit(index) {
+  const r = searchMatches[index];
+  if (!r) return;
+
+  editSlug = r["Slug"]?.trim() || "";
+
+  // Pre-fill all form fields
+  document.getElementById("f-name").value        = r["Name"]?.trim() || "";
+  document.getElementById("f-author").value      = slugToDisplayName(r["Author"]?.trim());
+  document.getElementById("f-quantity").value    = r["Quantity"]?.trim() || "";
+  document.getElementById("f-description").value = r["Brief description"]?.trim() || "";
+  document.getElementById("f-image").value       = r["Main image"]?.trim() || "";
+  document.getElementById("f-related").value     = (r["Related recipes"]||"").trim();
+  document.getElementById("f-favorite").checked  = r["Favorite?"]?.toLowerCase() === "true";
+  document.getElementById("f-ingredients").value = htmlToPlain(r["Ingredients"]||"");
+  document.getElementById("f-instructions").value= htmlToPlain(r["Instructions"]||"");
+  document.getElementById("f-notes").value       = htmlToPlain(r["Chef's notes"]||"");
+
+  // Category select
+  const catSlug = (r["Category"]||"").split(";")[0].trim();
+  const catSelect = document.getElementById("f-category");
+  catSelect.value = catSlug;
+
+  // Show selected banner, hide results
+  document.getElementById("edit-selected-name").textContent = r["Name"];
+  document.getElementById("edit-selected-banner").style.display = "flex";
+  document.getElementById("edit-results").innerHTML = "";
+  document.getElementById("edit-search-input").value = "";
+
+  // Scroll to form
+  document.getElementById("recipe-form").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function clearEditSelection() {
+  editSlug = null;
+  document.getElementById("edit-selected-banner").style.display = "none";
+  document.getElementById("edit-selected-name").textContent = "";
+  document.getElementById("edit-results").innerHTML = "";
+  document.getElementById("edit-search-input").value = "";
+  document.getElementById("recipe-form").reset();
 }
 </script>
 </body>

@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Favorites — The Johnson Cookbook</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="nav-brand" href="index.html">🥘 The Johnson Cookbook</a>
+    <div class="nav-links">
+      <a class="nav-link" href="index.html">← All Recipes</a>
+      <a class="nav-link nav-link-primary" href="admin.html">Admin</a>
+    </div>
+  </div>
+</nav>
+
+<!-- HEADER -->
+<div class="hero" style="padding:32px 24px 28px;">
+  <p class="hero-eyebrow">Personal collection</p>
+  <h1 style="margin-bottom:8px;">★ My Favorites</h1>
+  <p style="color:rgba(255,255,255,.55);font-size:0.9rem;margin:0;">Recipes you've starred — saved to this device</p>
+</div>
+
+<!-- GRID -->
+<main class="page" style="padding-top:32px;padding-bottom:64px;">
+  <div class="results-bar" id="results-bar"></div>
+  <div class="recipe-grid" id="recipe-grid">
+    <div class="loading-state">
+      <div class="spinner"></div>
+    </div>
+  </div>
+</main>
+
+<!-- FOOTER -->
+<footer style="background:var(--white);border-top:1px solid var(--border);padding:28px 24px;text-align:center;color:var(--ink-faint);font-size:0.82rem;">
+  <p>The Johnson Cookbook &mdash; A family tradition. &nbsp;|&nbsp; <a href="admin.html">Add a recipe</a></p>
+</footer>
+
+<script src="config.js"></script>
+<script>
+// ── Shared helpers ────────────────────────────────────────────────────────────
+
+const CATEGORIES = {
+  "appetizers":"Appetizers","baking":"Baking","basic-building-blocks":"Building Blocks",
+  "beans":"Beans","breakfasts-breads":"Breakfasts & Breads","cocktails":"Cocktails",
+  "desserts":"Desserts","salsas-dips":"Dips & Salsas","easy-weeknight-meals":"Easy Weeknight",
+  "entertaining-meals-most-preparation-can-be-done-ahead-of-time":"Entertaining",
+  "seafood":"Seafood","holiday-specials":"Holiday","interesting-but-not-tried":"Want to Try",
+  "japan-southeast-asia":"Japan & SE Asia","latin-america":"Latin America","meat":"Meat",
+  "meatballs-sausages":"Meatballs & Sausages","mediterranean":"Mediterranean",
+  "pasta-rice":"Pasta & Rice","potatoes":"Potatoes","poultry":"Poultry",
+  "regular-family-favorites":"Family Favorites","sauces-relishes":"Sauces & Relishes",
+  "rice-rice-dishes":"Rice Dishes","salads":"Salads","sandwiches":"Sandwiches",
+  "simple-but-requires-marinading-or-day-before-preparation":"Make Ahead",
+  "soups":"Soups","stews-pies":"Stews & Pies","tapas":"Tapas","vegetables":"Vegetables",
+};
+
+const CATEGORY_HUES = {
+  "appetizers":25,"baking":38,"basic-building-blocks":196,"beans":118,
+  "breakfasts-breads":44,"cocktails":278,"desserts":332,"salsas-dips":12,
+  "easy-weeknight-meals":168,"entertaining-meals-most-preparation-can-be-done-ahead-of-time":250,
+  "seafood":200,"holiday-specials":350,"interesting-but-not-tried":68,
+  "japan-southeast-asia":188,"latin-america":28,"meat":8,"meatballs-sausages":18,
+  "mediterranean":215,"pasta-rice":48,"potatoes":85,"poultry":42,
+  "regular-family-favorites":356,"sauces-relishes":142,"rice-rice-dishes":78,
+  "salads":102,"sandwiches":36,"simple-but-requires-marinading-or-day-before-preparation":225,
+  "soups":190,"stews-pies":22,"tapas":268,"vegetables":132,
+};
+
+function slugHash(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) & 0xffff;
+  return h % 360;
+}
+function categoryStyle(slug) {
+  const hue = (slug in CATEGORY_HUES) ? CATEGORY_HUES[slug] : slugHash(slug);
+  return { bg: `hsl(${hue},52%,90%)`, text: `hsl(${hue},48%,26%)` };
+}
+function escHtml(s) {
+  return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+function stripHtml(html) {
+  return (html||"").replace(/<[^>]*>/g," ").replace(/\s+/g," ").trim();
+}
+function extractFirstImage(html) {
+  const m = (html||"").match(/<img[^>]+src=["']([^"']+)["']/i);
+  return m ? m[1] : "";
+}
+function parseCats(str) {
+  return str ? str.split(";").map(s=>s.trim()).filter(Boolean) : [];
+}
+function authorName(raw) {
+  return (raw||"").replace(/-/g," ").replace(/\b\w/g,c=>c.toUpperCase());
+}
+function primaryCatLabel(cats) {
+  for (const c of cats) if (CATEGORIES[c]) return CATEGORIES[c];
+  return cats[0] ? cats[0].replace(/-/g," ") : "";
+}
+
+// ── Favorites ─────────────────────────────────────────────────────────────────
+function getFavs() {
+  try { return new Set(JSON.parse(localStorage.getItem("jcb_favs")||"[]")); }
+  catch { return new Set(); }
+}
+function toggleFav(slug) {
+  const favs = getFavs();
+  if (favs.has(slug)) favs.delete(slug); else favs.add(slug);
+  localStorage.setItem("jcb_favs", JSON.stringify([...favs]));
+}
+
+// ── Smart crop ────────────────────────────────────────────────────────────────
+function smartCrop(img) {
+  const wrap = img.closest(".card-image-wrap");
+  if (!wrap) return;
+  const iw = img.naturalWidth, ih = img.naturalHeight;
+  if (!iw || !ih) return;
+  const cw = wrap.clientWidth || wrap.offsetWidth || 1;
+  const ch = wrap.clientHeight || wrap.offsetHeight || 1;
+  img.style.objectPosition = (iw/ih) >= (cw/ch) ? "center center" : "center top";
+}
+
+// ── Star SVG ──────────────────────────────────────────────────────────────────
+const STAR_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path class="star-path" d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`;
+
+function handleFavClick(btn) {
+  const slug = btn.dataset.slug;
+  toggleFav(slug);
+  const isFav = getFavs().has(slug);
+  btn.classList.toggle("active", isFav);
+  btn.title = isFav ? "Remove from favorites" : "Add to favorites";
+  // If unfavorited, remove the card from the page with a fade
+  if (!isFav) {
+    const card = btn.closest(".recipe-card");
+    if (card) {
+      card.style.transition = "opacity .3s";
+      card.style.opacity = "0";
+      setTimeout(() => {
+        card.remove();
+        updateCount();
+      }, 300);
+    }
+  }
+}
+
+function updateCount() {
+  const remaining = document.querySelectorAll(".recipe-card").length;
+  const bar = document.getElementById("results-bar");
+  if (remaining === 0) {
+    document.getElementById("recipe-grid").innerHTML = emptyStateHtml();
+    bar.textContent = "";
+  } else {
+    bar.textContent = `${remaining} recipe${remaining !== 1 ? "s" : ""}`;
+  }
+}
+
+// ── Card renderer ─────────────────────────────────────────────────────────────
+function renderCard(r) {
+  const primaryCat = r.categories[0] || null;
+  const catLabel = primaryCatLabel(r.categories);
+  const desc = r.description || stripHtml(r.notes).slice(0, 120);
+  const favBtn = `<button class="card-fav active" data-slug="${escHtml(r.slug)}"
+      title="Remove from favorites"
+      onclick="event.preventDefault();event.stopPropagation();handleFavClick(this)">
+      ${STAR_SVG}</button>`;
+  const imageBlock = r.image ? `
+    <div class="card-image-wrap">
+      <img class="card-image" src="${escHtml(r.image)}" alt="${escHtml(r.name)}"
+           loading="lazy" onload="smartCrop(this)" onerror="this.parentElement.remove()">
+    </div>` : "";
+  let catPill = "";
+  if (catLabel) {
+    const cs = primaryCat ? categoryStyle(primaryCat) : null;
+    const style = cs ? ` style="background:${cs.bg};color:${cs.text}"` : "";
+    catPill = `<div class="card-category"${style}>${escHtml(catLabel)}</div>`;
+  }
+  return `
+    <a class="recipe-card${r.image ? "" : " no-image"}" href="recipe.html?id=${encodeURIComponent(r.slug)}" onclick="if(event.target.closest('.card-fav'))event.preventDefault()">
+      ${imageBlock}
+      <div class="card-body">
+        <div class="card-title">${escHtml(r.name)}</div>
+        ${desc ? `<div class="card-desc">${escHtml(desc)}</div>` : ""}
+        <div class="card-meta">
+          ${r.quantity ? `<span class="card-meta-item">🍽 ${escHtml(r.quantity)}</span>` : ""}
+          ${r.author ? `<span class="card-author">&mdash; ${escHtml(authorName(r.author))}</span>` : ""}
+        </div>
+        <div class="card-bottom-row">
+          ${catPill}
+          ${favBtn}
+        </div>
+      </div>
+    </a>`;
+}
+
+function emptyStateHtml() {
+  return `<div class="empty-state" style="grid-column:1/-1">
+    <span class="emoji">★</span>
+    <h3>No favorites yet</h3>
+    <p>Tap the star on any recipe to save it here.</p>
+    <a href="index.html" class="btn btn-outline" style="margin-top:16px;display:inline-flex;">Browse all recipes</a>
+  </div>`;
+}
+
+// ── Load & render ─────────────────────────────────────────────────────────────
+function load() {
+  const favs = getFavs();
+  const grid = document.getElementById("recipe-grid");
+  const bar  = document.getElementById("results-bar");
+
+  if (favs.size === 0) {
+    grid.innerHTML = emptyStateHtml();
+    bar.textContent = "";
+    return;
+  }
+
+  function parseAndRender(rows) {
+    const favRecipes = rows
+      .filter(r => r["Name"]?.trim())
+      .map(r => {
+        const ingredients  = r["Ingredients"]?.trim() || "";
+        const instructions = r["Instructions"]?.trim() || "";
+        const mainImage    = r["Main image"]?.trim() || "";
+        return {
+          name:        r["Name"]?.trim() || "",
+          slug:        r["Slug"]?.trim() || "",
+          author:      r["Author"]?.trim() || "",
+          quantity:    r["Quantity"]?.trim() || "",
+          description: r["Brief description"]?.trim() || "",
+          categories:  parseCats(r["Category"]),
+          image:       mainImage || extractFirstImage(ingredients) || extractFirstImage(instructions),
+          notes:       r["Chef's notes"]?.trim() || "",
+        };
+      })
+      .filter(r => favs.has(r.slug))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    if (favRecipes.length === 0) {
+      grid.innerHTML = emptyStateHtml();
+      bar.textContent = "";
+      return;
+    }
+
+    bar.textContent = `${favRecipes.length} recipe${favRecipes.length !== 1 ? "s" : ""}`;
+    grid.innerHTML = favRecipes.map(renderCard).join("");
+  }
+
+  function loadLocal() {
+    fetch("recipes.csv")
+      .then(r => { if (!r.ok) throw new Error(); return r.text(); })
+      .then(text => Papa.parse(text, { header:true, complete: res => parseAndRender(res.data) }))
+      .catch(() => {
+        grid.innerHTML = `<div class="empty-state"><p>Could not load recipes.</p></div>`;
+      });
+  }
+
+  if (!CONFIG.SHEET_CSV_URL || CONFIG.SHEET_CSV_URL.includes("YOUR_")) {
+    loadLocal();
+    return;
+  }
+
+  Papa.parse(CONFIG.SHEET_CSV_URL, {
+    download: true, header: true,
+    complete: res => {
+      const valid = res.data.filter(r => r["Name"]?.trim());
+      if (valid.length === 0) loadLocal(); else parseAndRender(res.data);
+    },
+    error: loadLocal
+  });
+}
+
+load();
+</script>
+</body>
+</html>
