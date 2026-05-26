@@ -909,10 +909,17 @@ textarea { resize: vertical; min-height: 120px; }
 .submit-status.success { color: var(--accent-dark); }
 .submit-status.error { color: #b94040; }
 
+/* ---------- Disable hover effects on touch devices ---------- */
+@media (hover: none) {
+  .recipe-card:hover { transform: none; box-shadow: none; border-color: var(--border); }
+  .recipe-card:hover .card-image { transform: none; }
+}
+
 /* ---------- Responsive ---------- */
 @media (max-width: 768px) {
   .recipe-hero-inner { grid-template-columns: 1fr; }
-  .recipe-body { grid-template-columns: 1fr; }
+  .recipe-body { grid-template-columns: 1fr; gap: 28px; }
+  .recipe-body-outer { padding: 28px 0 48px; }
   .recipe-sidebar { position: static; }
   .form-row { grid-template-columns: 1fr; }
   .quick-add-grid { grid-template-columns: 1fr; }
@@ -929,6 +936,14 @@ textarea { resize: vertical; min-height: 120px; }
   .view-controls { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .view-controls::-webkit-scrollbar { display: none; }
   .vc-divider { display: none; }
+  /* Larger touch targets for sort/filter buttons */
+  .vc-btn { padding: 8px 14px; font-size: 0.82rem; }
+  /* Larger main buttons */
+  .btn { padding: 11px 18px; }
+  /* Prevent iOS zoom on search — must be 16px+ */
+  .search-input { font-size: 1rem; }
+  /* Expand fav button tap area with padding trick */
+  .card-fav { width: 36px; height: 36px; }
 }
 @media (max-width: 480px) {
   .recipe-grid { grid-template-columns: 1fr; }
