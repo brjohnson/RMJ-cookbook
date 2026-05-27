@@ -4,6 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Recipe — The Johnson Cookbook</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🥘</text></svg>">
+  <meta property="og:title" content="The Johnson Cookbook">
+  <meta property="og:description" content="Our family's collected recipes — passed down, shared, and loved.">
+  <meta property="og:image" content="og-default.jpg">
+  <meta property="og:type" content="article">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
@@ -175,8 +180,13 @@ function renderFromData(rows) {
   const recipe = all.find(r => r.slug === urlId || r.name.toLowerCase().replace(/\s+/g,"-") === urlId);
   if (!recipe) { renderError(); return; }
 
-  // Set page title
+  // Set page title and OG tags
   document.title = `${recipe.name} — The Johnson Cookbook`;
+  document.querySelector('meta[property="og:title"]')?.setAttribute("content", `${recipe.name} — The Johnson Cookbook`);
+  document.querySelector('meta[property="og:description"]')?.setAttribute("content", recipe.description || "A recipe from The Johnson Cookbook.");
+  if (recipe.image) {
+    document.querySelector('meta[property="og:image"]')?.setAttribute("content", recipe.image);
+  }
 
   const favs = getFavs();
   const isFav = favs.has(recipe.slug) || recipe.favorite;
