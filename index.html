@@ -37,6 +37,7 @@
     <input type="search" class="search-input" id="search-input" placeholder="Search recipes, ingredients, or keywords…" autocomplete="off">
     <svg class="search-icon" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
   </div>
+  <div class="search-result-pill" id="search-result-pill"></div>
 </section>
 
 <!-- MAIN -->
@@ -455,6 +456,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const si = document.getElementById("search-input");
   si.addEventListener("input", () => {
     searchQuery = si.value.trim().toLowerCase();
+    // Hide Recently Added while searching so grid is closer to the top
+    const spotlight = document.getElementById("spotlight-section");
+    if (spotlight) spotlight.style.display = searchQuery ? "none" : (ALL_RECIPES.length ? "block" : "none");
     renderGrid();
   });
 
@@ -542,10 +546,23 @@ function renderGrid() {
   const favs = getFavs();
   const grid = document.getElementById("recipe-grid");
   const bar = document.getElementById("results-bar");
+  const pill = document.getElementById("search-result-pill");
 
   bar.textContent = recipes.length === ALL_RECIPES.length
     ? `${ALL_RECIPES.length} recipes`
     : `${recipes.length} of ${ALL_RECIPES.length} recipes`;
+
+  // Animate result pill in hero when searching
+  if (pill) {
+    if (searchQuery) {
+      pill.textContent = recipes.length === 0
+        ? "No recipes found"
+        : `${recipes.length} recipe${recipes.length !== 1 ? "s" : ""}`;
+      pill.classList.add("visible");
+    } else {
+      pill.classList.remove("visible");
+    }
+  }
 
   if (recipes.length === 0) {
     grid.classList.remove("is-grouped");

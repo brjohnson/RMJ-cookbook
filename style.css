@@ -144,6 +144,22 @@ p { color: var(--ink-light); }
   box-shadow: 0 4px 24px rgba(0,0,0,.3);
 }
 .search-input::placeholder { color: var(--ink-faint); }
+.search-result-pill {
+  margin-top: 12px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: rgba(255,255,255,.75);
+  letter-spacing: .03em;
+  min-height: 1.2em;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity .2s ease, transform .2s ease;
+  text-align: center;
+}
+.search-result-pill.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
 .search-icon {
   position: absolute;
   right: 16px;
