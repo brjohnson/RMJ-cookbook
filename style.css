@@ -144,23 +144,26 @@ p { color: var(--ink-light); }
   box-shadow: 0 4px 24px rgba(0,0,0,.3);
 }
 .search-input::placeholder { color: var(--ink-faint); }
-.search-result-pill {
-  font-size: 0.8rem;
-  font-weight: 500;
-  color: rgba(255,255,255,.75);
-  letter-spacing: .03em;
+mark.search-hl {
+  background: rgba(255, 213, 79, 0.45);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+.hero-result-count {
   max-height: 0;
   overflow: hidden;
   opacity: 0;
-  transform: translateY(4px);
-  transition: opacity .2s ease, transform .2s ease, max-height .2s ease, margin-top .2s ease;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: rgba(255,255,255,.6);
   text-align: center;
+  transition: max-height .2s ease, opacity .2s ease, margin-top .2s ease;
 }
-.search-result-pill.visible {
+.hero-result-count.visible {
   max-height: 2em;
-  margin-top: 12px;
+  margin-top: 8px;
   opacity: 1;
-  transform: translateY(0);
 }
 .search-icon {
   position: absolute;
@@ -1077,10 +1080,62 @@ textarea { resize: vertical; min-height: 120px; }
   .card-fav { width: 36px; height: 36px; }
 }
 @media (max-width: 480px) {
-  .recipe-grid { grid-template-columns: 1fr; }
+  /* Single column grid */
+  .recipe-grid { grid-template-columns: 1fr; gap: 8px; }
   .spotlight-grid { grid-template-columns: 1fr; }
-  .hero { padding: 16px 16px 16px; }
+
+  /* Horizontal list card layout on mobile */
+  .recipe-card {
+    display: flex;
+    flex-direction: row-reverse;
+    align-items: stretch;
+    height: 76px;
+    border-radius: 10px;
+  }
+  .card-image-wrap {
+    width: 76px;
+    min-width: 76px;
+    flex-shrink: 0;
+    aspect-ratio: unset;
+    height: 100%;
+    border-radius: 0 10px 10px 0;
+  }
+  .recipe-card.no-image .card-image-wrap { display: none; }
+  .card-body {
+    flex: 1;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .card-title {
+    font-size: 0.9rem;
+    line-height: 1.25;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .card-desc { display: none; }
+  .card-meta { display: none; }
+  .card-bottom-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 0;
+  }
+  .card-fav { width: 26px; height: 26px; flex-shrink: 0; }
+  .card-category { font-size: 0.62rem; padding: 1px 6px; }
+  .hero {
+    padding: 12px 16px 8px;
+    position: sticky;
+    top: var(--nav-height);
+    z-index: 50;
+  }
   .hero h1 { display: none; }
+  .results-bar { display: none; }
   /* Admin: full-width submit row on mobile */
   .form-submit-row { flex-wrap: wrap; }
   .url-import-row { flex-direction: column; }

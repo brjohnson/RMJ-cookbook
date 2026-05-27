@@ -37,7 +37,7 @@
     <input type="search" class="search-input" id="search-input" placeholder="Search recipes, ingredients, or keywords…" autocomplete="off">
     <svg class="search-icon" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
   </div>
-  <div class="search-result-pill" id="search-result-pill"></div>
+  <div class="hero-result-count" id="hero-result-count"></div>
 </section>
 
 <!-- MAIN -->
@@ -456,9 +456,12 @@ document.addEventListener("DOMContentLoaded", () => {
   const si = document.getElementById("search-input");
   si.addEventListener("input", () => {
     searchQuery = si.value.trim().toLowerCase();
-    // Hide Recently Added while searching so grid is closer to the top
+    const isSearching = !!searchQuery;
+    // Hide spotlight, filters, and view controls while searching
     const spotlight = document.getElementById("spotlight-section");
-    if (spotlight) spotlight.style.display = searchQuery ? "none" : (ALL_RECIPES.length ? "block" : "none");
+    if (spotlight) spotlight.style.display = isSearching ? "none" : (ALL_RECIPES.length ? "block" : "none");
+    document.getElementById("filters").style.display = isSearching ? "none" : "";
+    document.getElementById("view-controls").style.display = isSearching ? "none" : (ALL_RECIPES.length ? "flex" : "none");
     renderGrid();
   });
 
@@ -484,7 +487,20 @@ function filteredRecipes() {
   });
 
   // Sort
-  if (sortMode === "az") {
+  if (searchQuery) {
+    // Relevance ranking: title > description > ingredients/notes
+    const score = r => {
+      const q = searchQuery;
+      const name = r.name.toLowerCase();
+      const desc = (r.description || "").toLowerCase();
+      const body = [stripHtml(r.ingredients), stripHtml(r.instructions), r.notes].join(" ").toLowerCase();
+      if (name.includes(q)) return 3;
+      if (desc.includes(q)) return 2;
+      if (body.includes(q)) return 1;
+      return 0;
+    };
+    result.sort((a, b) => score(b) - score(a) || a.name.localeCompare(b.name));
+  } else if (sortMode === "az") {
     result.sort((a, b) => a.name.localeCompare(b.name));
   } else if (sortMode === "za") {
     result.sort((a, b) => b.name.localeCompare(a.name));
@@ -497,6 +513,13 @@ function filteredRecipes() {
 
 // ---- Single card HTML ----
 const STAR_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path class="star-path" d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`;
+
+function highlight(text, query) {
+  if (!query) return escHtml(text);
+  const escaped = escHtml(text);
+  const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return escaped.replace(new RegExp(`(${escapedQuery})`, "gi"), `<mark class="search-hl">$1</mark>`);
+}
 
 function renderCard(r, favs) {
   const isFav = favs.has(r.slug);
@@ -519,15 +542,15 @@ function renderCard(r, favs) {
   if (catLabel) {
     const cs = primaryCat ? categoryStyle(primaryCat) : null;
     const style = cs ? ` style="background:${cs.bg};color:${cs.text}"` : "";
-    catPill = `<div class="card-category"${style}>${escHtml(catLabel)}</div>`;
+    catPill = `<div class="card-category"${style}>${highlight(catLabel, searchQuery)}</div>`;
   }
 
   return `
     <a class="recipe-card${r.image ? "" : " no-image"}" href="recipe.html?id=${encodeURIComponent(r.slug)}" onclick="if(event.target.closest('.card-fav'))event.preventDefault()">
       ${imageBlock}
       <div class="card-body">
-        <div class="card-title">${escHtml(r.name)}</div>
-        ${desc ? `<div class="card-desc">${escHtml(desc)}</div>` : ""}
+        <div class="card-title">${highlight(r.name, searchQuery)}</div>
+        ${desc ? `<div class="card-desc">${highlight(desc, searchQuery)}</div>` : ""}
         <div class="card-meta">
           ${r.quantity ? `<span class="card-meta-item">🍽 ${escHtml(r.quantity)}</span>` : ""}
           ${r.author ? `<span class="card-author">&mdash; ${escHtml(authorName(r.author))}</span>` : ""}
@@ -546,21 +569,18 @@ function renderGrid() {
   const favs = getFavs();
   const grid = document.getElementById("recipe-grid");
   const bar = document.getElementById("results-bar");
-  const pill = document.getElementById("search-result-pill");
-
   bar.textContent = recipes.length === ALL_RECIPES.length
     ? `${ALL_RECIPES.length} recipes`
     : `${recipes.length} of ${ALL_RECIPES.length} recipes`;
 
-  // Animate result pill in hero when searching
-  if (pill) {
+  // Hero result count (shown when searching on mobile)
+  const heroCount = document.getElementById("hero-result-count");
+  if (heroCount) {
     if (searchQuery) {
-      pill.textContent = recipes.length === 0
-        ? "No recipes found"
-        : `${recipes.length} recipe${recipes.length !== 1 ? "s" : ""}`;
-      pill.classList.add("visible");
+      heroCount.textContent = `${recipes.length} of ${ALL_RECIPES.length} recipes`;
+      heroCount.classList.add("visible");
     } else {
-      pill.classList.remove("visible");
+      heroCount.classList.remove("visible");
     }
   }
 
