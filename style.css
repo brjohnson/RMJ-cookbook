@@ -1089,12 +1089,12 @@ textarea { resize: vertical; min-height: 120px; }
     display: flex;
     flex-direction: row-reverse;
     align-items: stretch;
-    height: 76px;
+    height: 88px;
     border-radius: 10px;
   }
   .card-image-wrap {
-    width: 76px;
-    min-width: 76px;
+    width: 88px;
+    min-width: 88px;
     flex-shrink: 0;
     aspect-ratio: unset;
     height: 100%;
@@ -1103,7 +1103,7 @@ textarea { resize: vertical; min-height: 120px; }
   .recipe-card.no-image .card-image-wrap { display: none; }
   .card-body {
     flex: 1;
-    padding: 10px 12px;
+    padding: 10px 14px;
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -1112,8 +1112,8 @@ textarea { resize: vertical; min-height: 120px; }
     overflow: hidden;
   }
   .card-title {
-    font-size: 0.9rem;
-    line-height: 1.25;
+    font-size: 1rem;
+    line-height: 1.3;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1126,8 +1126,8 @@ textarea { resize: vertical; min-height: 120px; }
     justify-content: space-between;
     margin-top: 0;
   }
-  .card-fav { width: 26px; height: 26px; flex-shrink: 0; }
-  .card-category { font-size: 0.62rem; padding: 1px 6px; }
+  .card-fav { width: 28px; height: 28px; flex-shrink: 0; }
+  .card-category { font-size: 0.68rem; padding: 2px 7px; }
   .hero {
     padding: 12px 16px 8px;
     position: sticky;
