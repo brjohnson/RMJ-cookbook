@@ -206,6 +206,9 @@ mark.search-hl {
   grid-template-columns: repeat(3, 1fr);
   gap: 16px;
 }
+.spotlight-grid .card-image-wrap {
+  aspect-ratio: 20/9;
+}
 @media (max-width: 768px) { .spotlight-grid { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 480px) { .spotlight-grid { grid-template-columns: 1fr; } }
 
