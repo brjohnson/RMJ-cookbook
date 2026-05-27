@@ -145,18 +145,20 @@ p { color: var(--ink-light); }
 }
 .search-input::placeholder { color: var(--ink-faint); }
 .search-result-pill {
-  margin-top: 12px;
   font-size: 0.8rem;
   font-weight: 500;
   color: rgba(255,255,255,.75);
   letter-spacing: .03em;
-  min-height: 1.2em;
+  max-height: 0;
+  overflow: hidden;
   opacity: 0;
   transform: translateY(4px);
-  transition: opacity .2s ease, transform .2s ease;
+  transition: opacity .2s ease, transform .2s ease, max-height .2s ease, margin-top .2s ease;
   text-align: center;
 }
 .search-result-pill.visible {
+  max-height: 2em;
+  margin-top: 12px;
   opacity: 1;
   transform: translateY(0);
 }
@@ -1077,7 +1079,8 @@ textarea { resize: vertical; min-height: 120px; }
 @media (max-width: 480px) {
   .recipe-grid { grid-template-columns: 1fr; }
   .spotlight-grid { grid-template-columns: 1fr; }
-  .hero { padding: 28px 16px 24px; }
+  .hero { padding: 16px 16px 16px; }
+  .hero h1 { display: none; }
   /* Admin: full-width submit row on mobile */
   .form-submit-row { flex-wrap: wrap; }
   .url-import-row { flex-direction: column; }
