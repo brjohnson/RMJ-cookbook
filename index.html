@@ -290,30 +290,54 @@ function categoryStyle(slug) {
   };
 }
 
-// ---- Load data ----
-async function loadRecipes() {
+// ---- Cache helpers ----
+const CACHE_KEY = "jcb_recipes_cache";
+const CACHE_TTL = 60 * 60 * 1000; // 1 hour — only used to decide background refresh urgency
+
+function saveCache(rawRows) {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), rows: rawRows }));
+  } catch(e) { /* localStorage full — skip */ }
+}
+
+function loadCache() {
+  try {
+    const entry = JSON.parse(localStorage.getItem(CACHE_KEY) || "null");
+    return entry && entry.rows ? entry : null;
+  } catch { return null; }
+}
+
+// ---- Load data — stale-while-revalidate ----
+function loadRecipes() {
+  const cache = loadCache();
+
+  if (cache) {
+    // Render immediately from cache so the page is instant
+    processData(cache.rows, /* fromCache */ true);
+  }
+
   if (!CONFIG.SHEET_CSV_URL || CONFIG.SHEET_CSV_URL.includes("YOUR_")) {
-    loadFromLocalCSV();
+    if (!cache) loadFromLocalCSV();
     return;
   }
-  // Try Google Sheet first, fall back to local CSV on any error
+
+  // Always fetch fresh data in the background
   Papa.parse(CONFIG.SHEET_CSV_URL, {
     download: true,
     header: true,
     complete: result => {
-      // Google Sheet returned data — but check it's not empty
       const valid = (result.data || []).filter(r => r["Name"] && r["Name"].trim());
       if (valid.length === 0) {
-        console.warn("Google Sheet returned no recipes — falling back to local CSV");
-        loadFromLocalCSV();
-      } else {
+        if (!cache) loadFromLocalCSV();
+        return;
+      }
+      saveCache(result.data);
+      // Only re-render if this is the first load or data has changed
+      if (!cache || JSON.stringify(result.data) !== JSON.stringify(cache.rows)) {
         processData(result.data);
       }
     },
-    error: err => {
-      console.warn("Google Sheet fetch failed:", err, "— falling back to local CSV");
-      loadFromLocalCSV();
-    }
+    error: () => { if (!cache) loadFromLocalCSV(); }
   });
 }
 
@@ -325,7 +349,10 @@ function loadFromLocalCSV() {
     })
     .then(text => {
       if (!text.trim()) throw new Error("recipes.csv is empty");
-      Papa.parse(text, { header: true, complete: result => processData(result.data) });
+      Papa.parse(text, { header: true, complete: result => {
+        saveCache(result.data);
+        processData(result.data);
+      }});
     })
     .catch(err => {
       document.getElementById("recipe-grid").innerHTML = `
@@ -338,7 +365,7 @@ function loadFromLocalCSV() {
     });
 }
 
-function processData(rows) {
+function processData(rows, fromCache = false) {
   ALL_RECIPES = rows
     .filter(r => r["Name"] && r["Name"].trim())
     .map(r => {
