@@ -405,12 +405,10 @@ function buildFilters() {
   const allCats = new Set();
   ALL_RECIPES.forEach(r => r.categories.forEach(c => allCats.add(c)));
 
-  const ordered = PRIORITY_CATS.filter(c => allCats.has(c));
-  const rest = [...allCats].filter(c => !PRIORITY_CATS.includes(c))
-    .sort((a, b) => (CATEGORIES[a] || a).localeCompare(CATEGORIES[b] || b));
-
   const catSelect = document.getElementById("category-select");
-  [...ordered, ...rest].forEach(cat => {
+  [...allCats]
+    .sort((a, b) => (CATEGORIES[a] || a).localeCompare(CATEGORIES[b] || b))
+    .forEach(cat => {
     const opt = document.createElement("option");
     opt.value = cat;
     opt.textContent = CATEGORIES[cat] || cat.replace(/-/g, " ");
@@ -424,9 +422,8 @@ function buildFilters() {
 
   if (ingCount.size > 0) {
     const ingLabel = i => i.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
-    const sorted = [...ingCount.entries()]
-      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-      .map(([ing]) => ing);
+    const sorted = [...ingCount.keys()]
+      .sort((a, b) => ingLabel(a).localeCompare(ingLabel(b)));
 
     const ingSelect = document.getElementById("ingredient-select");
     sorted.forEach(ing => {
