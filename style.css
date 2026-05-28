@@ -95,6 +95,7 @@ p { color: var(--ink-light); }
   font-weight: 500;
 }
 .nav-link-primary:hover { background: var(--accent-dark); text-decoration: none; }
+.nav-fav-short { display: none; }
 
 /* ---------- Page container ---------- */
 .page { max-width: var(--max-width); margin: 0 auto; padding: 0 24px; }
@@ -1061,7 +1062,9 @@ textarea { resize: vertical; min-height: 120px; }
   .recipe-sidebar { position: static; }
   .form-row { grid-template-columns: 1fr; }
   .quick-add-grid { grid-template-columns: 1fr; }
-  .nav-links .nav-link:not(.nav-link-primary) { display: none; }
+  .nav-links .nav-link:not(.nav-link-primary):not(.nav-link-favorites) { display: none; }
+  .nav-fav-full { display: none; }
+  .nav-fav-short { display: inline; }
   /* Admin: reduce section padding on mobile */
   .form-section { padding: 18px 16px; }
   .admin-page { padding-top: 24px; padding-bottom: 48px; }

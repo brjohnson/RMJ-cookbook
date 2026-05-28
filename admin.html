@@ -79,7 +79,7 @@
     <a class="nav-brand" href="index.html">🥘 The Johnson Cookbook</a>
     <div class="nav-links">
       <a class="nav-link" href="index.html">← All Recipes</a>
-      <a class="nav-link" href="favorites.html">★ My Favorites</a>
+      <a class="nav-link nav-link-favorites" href="favorites.html"><span class="nav-fav-full">★ My Favorites</span><span class="nav-fav-short">★</span></a>
     </div>
   </div>
 </nav>
@@ -210,7 +210,6 @@
             <option value="pasta-rice">Pasta & Rice</option>
             <option value="potatoes">Potatoes</option>
             <option value="poultry">Poultry</option>
-            <option value="regular-family-favorites">Regular Family Favorites</option>
             <option value="sauces-relishes">Sauces & Relishes</option>
             <option value="rice-rice-dishes">Rice Dishes</option>
             <option value="salads">Salads & Dressings</option>
@@ -295,10 +294,10 @@
           <p class="form-hint">Use the URL slug from the existing recipe URL.</p>
         </div>
         <div class="form-group">
-          <label>
-            <input type="checkbox" id="f-favorite" name="favorite" style="width:auto;margin-right:6px;">
-            Mark as a Family Favorite ⭐
-          </label>
+          <label for="f-principal-ingredients">Principal Ingredients</label>
+          <input type="text" id="f-principal-ingredients" name="principal-ingredients"
+                 placeholder="e.g. chicken; garlic; lemon">
+          <p class="form-hint">Semicolon-separated. Used for ingredient filtering on the site.</p>
         </div>
       </div>
     </div>
@@ -855,9 +854,9 @@ function collectFormData() {
     "Main image":        document.getElementById("f-image").value.trim(),
     Ingredients:        plainToHtml(document.getElementById("f-ingredients").value),
     Instructions:       plainToHtml(document.getElementById("f-instructions").value),
-    "Related recipes":  document.getElementById("f-related").value.trim(),
-    "Favorite?":        document.getElementById("f-favorite").checked ? "true" : "false",
-    "Chef's notes":     plainToHtml(document.getElementById("f-notes").value),
+    "Related recipes":       document.getElementById("f-related").value.trim(),
+    "Principal ingredients": document.getElementById("f-principal-ingredients").value.trim(),
+    "Chef's notes":          plainToHtml(document.getElementById("f-notes").value),
     "Created On":       new Date().toUTCString(),
     Draft:              "false",
     Archived:           "false",
@@ -1011,9 +1010,9 @@ function selectRecipeForEdit(index) {
   document.getElementById("f-quantity").value    = r["Quantity"]?.trim() || "";
   document.getElementById("f-description").value = r["Brief description"]?.trim() || "";
   document.getElementById("f-image").value       = r["Main image"]?.trim() || "";
-  document.getElementById("f-related").value     = (r["Related recipes"]||"").trim();
-  document.getElementById("f-favorite").checked  = r["Favorite?"]?.toLowerCase() === "true";
-  document.getElementById("f-ingredients").value = htmlToPlain(r["Ingredients"]||"");
+  document.getElementById("f-related").value              = (r["Related recipes"]||"").trim();
+  document.getElementById("f-principal-ingredients").value = (r["Principal ingredients"]||"").trim();
+  document.getElementById("f-ingredients").value           = htmlToPlain(r["Ingredients"]||"");
   document.getElementById("f-instructions").value= htmlToPlain(r["Instructions"]||"");
   document.getElementById("f-notes").value       = htmlToPlain(r["Chef's notes"]||"");
 

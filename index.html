@@ -24,7 +24,7 @@
     <a class="nav-brand" href="index.html">🥘 The Johnson Cookbook</a>
     <div class="nav-links">
       <a class="nav-link active" href="index.html">All Recipes</a>
-      <a class="nav-link" href="favorites.html">★ My Favorites</a>
+      <a class="nav-link nav-link-favorites" href="favorites.html"><span class="nav-fav-full">★ My Favorites</span><span class="nav-fav-short">★</span></a>
       <a class="nav-link nav-link-primary" href="admin.html">Admin</a>
     </div>
   </div>
@@ -78,13 +78,14 @@
       <div class="vc-group">
         <button class="vc-btn" id="group-toggle" onclick="toggleGroup()">Group by category</button>
       </div>
-      <div class="vc-divider"></div>
-      <div class="vc-group">
-        <span class="vc-label">Photos</span>
-        <button class="vc-btn active" data-photo="all" onclick="setPhoto('all')">All</button>
-        <button class="vc-btn" data-photo="with" onclick="setPhoto('with')">With photo</button>
-        <button class="vc-btn" data-photo="without" onclick="setPhoto('without')">No photo</button>
-      </div>
+    </div>
+
+    <!-- INGREDIENTS FILTER -->
+    <div class="filters" id="ingredient-filters" style="display:none">
+      <span class="filter-label">Ingredients:</span>
+      <select id="ingredient-select" class="category-select" onchange="handleIngredientChange(this.value)" title="Filter by ingredient">
+        <option value="">All</option>
+      </select>
     </div>
 
     <!-- RESULTS BAR -->
@@ -149,7 +150,6 @@ const CATEGORIES = {
 
 // Categories to show as visible chip buttons in the filter bar
 const CHIP_CATS = [
-  "regular-family-favorites",
   "easy-weeknight-meals",
   "mediterranean",
   "soups",
@@ -164,7 +164,7 @@ const CHIP_CATS = [
 
 // All other categories go in the "More…" dropdown
 const PRIORITY_CATS = [
-  "regular-family-favorites","easy-weeknight-meals","entertaining-meals-most-preparation-can-be-done-ahead-of-time",
+  "easy-weeknight-meals","entertaining-meals-most-preparation-can-be-done-ahead-of-time",
   "mediterranean","soups","seafood","meat","desserts","pasta-rice","tapas","appetizers","vegetables","baking","salads","cocktails"
 ];
 
@@ -174,7 +174,7 @@ const showFavsOnly = false;
 let searchQuery = "";
 let sortMode = "az";        // "az" | "za" | "newest"
 let groupByCategory = false;
-let photoFilter = "all";    // "all" | "with" | "without"
+let ingredientFilter = "";  // principal ingredient slug
 
 // Parse URL params
 const urlParams = new URLSearchParams(window.location.search);
@@ -387,10 +387,11 @@ function processData(rows, fromCache = false) {
         image,
         ingredients,
         instructions,
-        related:     r["Related recipes"]?.trim() || "",
-        favorite:    r["Favorite?"]?.toLowerCase() === "true",
-        notes:       r["Chef's notes"]?.trim() || "",
-        published:   r["Published On"]?.trim() || "",
+        related:      r["Related recipes"]?.trim() || "",
+        favorite:     r["Favorite?"]?.toLowerCase() === "true",
+        notes:        r["Chef's notes"]?.trim() || "",
+        published:    r["Published On"]?.trim() || "",
+        principalIngredients: parseCats(r["Principal ingredients"]),
       };
     });
 
@@ -443,6 +444,20 @@ function buildFilters() {
   }
 
 
+  // --- Ingredients filter dropdown ---
+  const allIngredients = new Set();
+  ALL_RECIPES.forEach(r => r.principalIngredients.forEach(i => allIngredients.add(i)));
+  if (allIngredients.size > 0) {
+    const ingSelect = document.getElementById("ingredient-select");
+    [...allIngredients].sort().forEach(ing => {
+      const opt = document.createElement("option");
+      opt.value = ing;
+      opt.textContent = ing.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+      ingSelect.appendChild(opt);
+    });
+    document.getElementById("ingredient-filters").style.display = "flex";
+  }
+
   // --- Spotlight: 3 most recently added recipes ---
   buildSpotlight();
 
@@ -488,6 +503,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const spotlight = document.getElementById("spotlight-section");
     if (spotlight) spotlight.style.display = isSearching ? "none" : (ALL_RECIPES.length ? "block" : "none");
     document.getElementById("filters").style.display = isSearching ? "none" : "";
+    document.getElementById("ingredient-filters").style.display = isSearching ? "none" : (document.getElementById("ingredient-select").options.length > 1 ? "flex" : "none");
     document.getElementById("view-controls").style.display = isSearching ? "none" : (ALL_RECIPES.length ? "flex" : "none");
     renderGrid();
   });
@@ -504,8 +520,7 @@ function filteredRecipes() {
   let result = ALL_RECIPES.filter(r => {
     if (r.name.toLowerCase().includes("need") && r.instructions.toLowerCase().includes("need data")) return false; // skip stubs
     if (activeCategory && !r.categories.includes(activeCategory)) return false;
-    if (photoFilter === "with"    && !r.image) return false;
-    if (photoFilter === "without" &&  r.image) return false;
+    if (ingredientFilter && !r.principalIngredients.includes(ingredientFilter)) return false;
     if (searchQuery) {
       const haystack = [r.name, r.description, stripHtml(r.ingredients), r.categories.join(" "), authorName(r.author)].join(" ").toLowerCase();
       if (!haystack.includes(searchQuery)) return false;
@@ -675,9 +690,8 @@ function setSort(mode) {
   renderGrid();
 }
 
-function setPhoto(mode) {
-  photoFilter = mode;
-  document.querySelectorAll(".vc-btn[data-photo]").forEach(b => b.classList.toggle("active", b.dataset.photo === mode));
+function handleIngredientChange(val) {
+  ingredientFilter = val;
   renderGrid();
 }
 
