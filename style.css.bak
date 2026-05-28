@@ -213,22 +213,11 @@ mark.search-hl {
 @media (max-width: 768px) { .spotlight-grid { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 480px) { .spotlight-grid { grid-template-columns: 1fr; } }
 
-/* ---------- Controls row (filter + sort on one line, desktop) ---------- */
-.controls-row {
-  display: flex;
-  align-items: center;
-  gap: 0;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 4px;
-}
-
 /* ---------- Filter group ---------- */
 .filter-group {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 0;
-  flex: 1; /* take up remaining space */
+  border-bottom: 1px solid var(--border);
+  padding: 14px 0 4px;
+  margin-bottom: 4px;
 }
 .filter-group-label {
   font-size: 0.72rem;
@@ -236,14 +225,54 @@ mark.search-hl {
   color: var(--ink-faint);
   text-transform: uppercase;
   letter-spacing: .07em;
-  white-space: nowrap;
+  display: block;
+  margin-bottom: 2px;
 }
-.filter-dropdowns {
+
+/* ---------- Filter bar ---------- */
+.filters {
   display: flex;
+  align-items: center;
   gap: 8px;
   flex-wrap: nowrap;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding: 8px 0 8px;
+  border-bottom: none;
+  margin-bottom: 0;
 }
-.filter-select {
+.filters::-webkit-scrollbar { display: none; }
+.filter-label {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  white-space: nowrap;
+  margin-right: 2px;
+}
+
+/* Category chip pills */
+.cat-chip {
+  padding: 5px 12px;
+  border-radius: 99px;
+  font-size: 0.75rem;
+  font-weight: 400;
+  background: var(--white);
+  color: var(--ink-light);
+  border: 1px solid var(--border-dark);
+  cursor: pointer;
+  transition: all .12s;
+  font-family: var(--font);
+  white-space: nowrap;
+}
+.cat-chip:hover { background: var(--accent-soft); color: var(--accent-dark); border-color: var(--accent); }
+.cat-chip.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+.category-select {
+  flex-shrink: 0;
+  margin-left: auto;
   padding: 6px 28px 6px 10px;
   border: 1px solid var(--border-dark);
   border-radius: 99px;
@@ -259,10 +288,8 @@ mark.search-hl {
   background-repeat: no-repeat;
   background-position: right 10px center;
   transition: border-color .12s;
-  max-width: 200px;
+  max-width: 220px;
 }
-.filter-select:hover { border-color: var(--accent); }
-.filter-select.active { border-color: var(--accent); background-color: var(--accent-soft); color: var(--accent-dark); }
 .category-select:focus { border-color: var(--accent); }
 .fav-btn {
   margin-left: auto;
@@ -406,15 +433,14 @@ mark.search-hl {
 }
 .recipe-card.no-image .card-body { padding-top: 16px; }
 
-/* ---------- View controls (sort / group) ---------- */
+/* ---------- View controls (sort / photo / group) ---------- */
 .view-controls {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 10px 18px;
-  padding: 10px 0;
-  margin-left: auto;
-  flex-shrink: 0;
+  padding: 10px 0 10px;
+  border-bottom: 1px solid var(--border);
 }
 .vc-group {
   display: flex;
@@ -1060,12 +1086,10 @@ textarea { resize: vertical; min-height: 120px; }
   .admin-page { padding-top: 24px; padding-bottom: 48px; }
   /* Spotlight: stack to 2 cols */
   .spotlight-grid { grid-template-columns: 1fr 1fr; }
-  /* Filter dropdowns: allow scroll on mobile */
-  .filter-dropdowns { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
-  /* Stack controls into two rows on mobile */
-  .controls-row { flex-wrap: wrap; }
-  .filter-group { flex: 1 1 100%; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
-  .view-controls { margin-left: 0; flex: 1 1 100%; flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-top: 8px; }
+  /* Filter bar: extra padding for touch scrolling */
+  .filters { padding-bottom: 14px; }
+  /* View controls: allow scroll on mobile */
+  .view-controls { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .view-controls::-webkit-scrollbar { display: none; }
   .vc-divider { display: none; }
   /* Larger touch targets for sort/filter buttons */

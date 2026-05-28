@@ -54,38 +54,46 @@
 
   <div class="page">
 
-    <!-- CONTROLS ROW: filters + sort on one line (desktop) -->
-    <div class="controls-row" id="controls-row">
+    <!-- FILTER GROUP -->
+    <div class="filter-group" id="filter-group">
+      <span class="filter-group-label">Filter by</span>
 
-      <!-- FILTER GROUP -->
-      <div class="filter-group" id="filter-group">
-        <span class="filter-group-label">Filter by</span>
-        <div class="filter-dropdowns">
-          <select id="category-select" class="filter-select" onchange="handleCategoryChange(this.value)">
-            <option value="">Category…</option>
-            <!-- options injected by JS -->
-          </select>
-          <select id="ingredient-select" class="filter-select" onchange="handleIngredientChange(this.value)" style="display:none">
-            <option value="">Ingredient…</option>
-            <!-- options injected by JS -->
-          </select>
-        </div>
+      <!-- Category filter -->
+      <div class="filters" id="filters">
+        <span class="filter-label">Category:</span>
+        <!-- Popular category chips injected by JS -->
+        <div id="cat-chips" style="display:contents"></div>
+        <!-- "More" dropdown for remaining categories -->
+        <select id="category-select" class="category-select" onchange="handleCategoryChange(this.value)" title="More categories">
+          <option value="">More…</option>
+          <!-- options injected by JS -->
+        </select>
       </div>
 
-      <!-- VIEW CONTROLS -->
-      <div class="view-controls" id="view-controls" style="display:none">
-        <div class="vc-group">
-          <span class="vc-label">Sort</span>
-          <button class="vc-btn active" data-sort="az" onclick="setSort('az')">A–Z</button>
-          <button class="vc-btn" data-sort="za" onclick="setSort('za')">Z–A</button>
-          <button class="vc-btn" data-sort="newest" onclick="setSort('newest')">Newest</button>
-        </div>
-        <div class="vc-divider"></div>
-        <div class="vc-group">
-          <button class="vc-btn" id="group-toggle" onclick="toggleGroup()">Group by category</button>
-        </div>
+      <!-- Ingredients filter -->
+      <div class="filters" id="ingredient-filters" style="display:none">
+        <span class="filter-label">Ingredient:</span>
+        <!-- Ingredient chips injected by JS -->
+        <div id="ing-chips" style="display:contents"></div>
+        <!-- "More" dropdown for remaining ingredients -->
+        <select id="ingredient-select" class="category-select" onchange="handleIngredientChange(this.value)" title="More ingredients">
+          <option value="">More…</option>
+        </select>
       </div>
+    </div>
 
+    <!-- VIEW CONTROLS -->
+    <div class="view-controls" id="view-controls" style="display:none">
+      <div class="vc-group">
+        <span class="vc-label">Sort</span>
+        <button class="vc-btn active" data-sort="az" onclick="setSort('az')">A–Z</button>
+        <button class="vc-btn" data-sort="za" onclick="setSort('za')">Z–A</button>
+        <button class="vc-btn" data-sort="newest" onclick="setSort('newest')">Newest</button>
+      </div>
+      <div class="vc-divider"></div>
+      <div class="vc-group">
+        <button class="vc-btn" id="group-toggle" onclick="toggleGroup()">Group by category</button>
+      </div>
     </div>
 
     <!-- RESULTS BAR -->
@@ -399,44 +407,98 @@ function processData(rows, fromCache = false) {
   renderGrid();
 }
 
-// ---- Build filter dropdowns ----
+// ---- Build category chips + dropdown ----
 function buildFilters() {
-  // --- Category dropdown: priority order then alpha ---
   const allCats = new Set();
   ALL_RECIPES.forEach(r => r.categories.forEach(c => allCats.add(c)));
 
-  const ordered = PRIORITY_CATS.filter(c => allCats.has(c));
-  const rest = [...allCats].filter(c => !PRIORITY_CATS.includes(c))
-    .sort((a, b) => (CATEGORIES[a] || a).localeCompare(CATEGORIES[b] || b));
+  // --- Chip buttons for popular cats ---
+  const chipsEl = document.getElementById("cat-chips");
+  CHIP_CATS.filter(c => allCats.has(c)).forEach(cat => {
+    const btn = document.createElement("button");
+    btn.className = "cat-chip" + (cat === activeCategory ? " active" : "");
+    btn.textContent = CATEGORIES[cat] || cat.replace(/-/g, " ");
+    btn.dataset.cat = cat;
+    btn.onclick = () => {
+      const isSame = activeCategory === cat;
+      activeCategory = isSame ? null : cat;
+      // sync dropdown
+      document.getElementById("category-select").value = isSame ? "" : cat;
+      document.querySelectorAll(".cat-chip").forEach(b => b.classList.toggle("active", b.dataset.cat === activeCategory));
+      renderGrid();
+    };
+    chipsEl.appendChild(btn);
+  });
 
-  const catSelect = document.getElementById("category-select");
-  [...ordered, ...rest].forEach(cat => {
+  // --- "More…" dropdown for remaining categories ---
+  const ordered = PRIORITY_CATS.filter(c => allCats.has(c) && !CHIP_CATS.includes(c));
+  const rest = [...allCats].filter(c => !PRIORITY_CATS.includes(c) && !CHIP_CATS.includes(c))
+    .sort((a, b) => (CATEGORIES[a] || a).localeCompare(CATEGORIES[b] || b));
+  const allOrdered = [...ordered, ...rest];
+
+  const select = document.getElementById("category-select");
+  allOrdered.forEach(cat => {
     const opt = document.createElement("option");
     opt.value = cat;
     opt.textContent = CATEGORIES[cat] || cat.replace(/-/g, " ");
     if (cat === activeCategory) opt.selected = true;
-    catSelect.appendChild(opt);
+    select.appendChild(opt);
   });
 
-  // --- Ingredient dropdown: frequency desc, then alpha ---
+  // If activeCategory is one of the chips, reflect in chips UI
+  if (activeCategory && CHIP_CATS.includes(activeCategory)) {
+    const chip = chipsEl.querySelector(`[data-cat="${activeCategory}"]`);
+    if (chip) chip.classList.add("active");
+  }
+
+
+  // --- Ingredients filter: chips + spillover dropdown ---
   const ingCount = new Map();
   ALL_RECIPES.forEach(r => r.principalIngredients.forEach(i => ingCount.set(i, (ingCount.get(i) || 0) + 1)));
 
   if (ingCount.size > 0) {
-    const ingLabel = i => i.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+    // Sort by frequency desc, then alpha for ties
     const sorted = [...ingCount.entries()]
       .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
       .map(([ing]) => ing);
 
-    const ingSelect = document.getElementById("ingredient-select");
-    sorted.forEach(ing => {
-      const opt = document.createElement("option");
-      opt.value = ing;
-      opt.textContent = ingLabel(ing);
-      if (ing === ingredientFilter) opt.selected = true;
-      ingSelect.appendChild(opt);
+    const CHIP_LIMIT = 8;
+    const chipIngs = sorted.slice(0, CHIP_LIMIT);
+    const moreIngs = sorted.slice(CHIP_LIMIT);
+
+    const ingLabel = i => i.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+
+    // Chip buttons
+    const ingChipsEl = document.getElementById("ing-chips");
+    chipIngs.forEach(ing => {
+      const btn = document.createElement("button");
+      btn.className = "cat-chip" + (ingredientFilter === ing ? " active" : "");
+      btn.textContent = ingLabel(ing);
+      btn.dataset.ing = ing;
+      btn.onclick = () => {
+        const isSame = ingredientFilter === ing;
+        ingredientFilter = isSame ? "" : ing;
+        document.getElementById("ingredient-select").value = "";
+        document.querySelectorAll(".cat-chip[data-ing]").forEach(b => b.classList.toggle("active", b.dataset.ing === ingredientFilter));
+        renderGrid();
+      };
+      ingChipsEl.appendChild(btn);
     });
-    ingSelect.style.display = "";
+
+    // Spillover dropdown
+    const ingSelect = document.getElementById("ingredient-select");
+    if (moreIngs.length === 0) {
+      ingSelect.style.display = "none";
+    } else {
+      moreIngs.forEach(ing => {
+        const opt = document.createElement("option");
+        opt.value = ing;
+        opt.textContent = ingLabel(ing);
+        ingSelect.appendChild(opt);
+      });
+    }
+
+    document.getElementById("ingredient-filters").style.display = "flex";
   }
 
   // --- Spotlight: 3 most recently added recipes ---
@@ -469,7 +531,8 @@ function clearSpotlight() {
 
 function handleCategoryChange(val) {
   activeCategory = val || null;
-  document.getElementById("category-select").classList.toggle("active", !!activeCategory);
+  // Sync chip buttons
+  document.querySelectorAll(".cat-chip").forEach(b => b.classList.toggle("active", b.dataset.cat === activeCategory));
   renderGrid();
 }
 
@@ -482,7 +545,8 @@ document.addEventListener("DOMContentLoaded", () => {
     // Hide spotlight, filters, and view controls while searching
     const spotlight = document.getElementById("spotlight-section");
     if (spotlight) spotlight.style.display = isSearching ? "none" : (ALL_RECIPES.length ? "block" : "none");
-    document.getElementById("controls-row").style.display = isSearching ? "none" : "";
+    document.getElementById("filter-group").style.display = isSearching ? "none" : "";
+    document.getElementById("ingredient-filters").style.display = isSearching ? "none" : (document.getElementById("ingredient-select").options.length > 1 ? "flex" : "none");
     document.getElementById("view-controls").style.display = isSearching ? "none" : (ALL_RECIPES.length ? "flex" : "none");
     renderGrid();
   });
@@ -671,7 +735,7 @@ function setSort(mode) {
 
 function handleIngredientChange(val) {
   ingredientFilter = val;
-  document.getElementById("ingredient-select").classList.toggle("active", !!val);
+  document.querySelectorAll(".cat-chip[data-ing]").forEach(b => b.classList.remove("active"));
   renderGrid();
 }
 
