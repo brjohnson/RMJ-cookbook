@@ -9,6 +9,9 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+  <!-- Quill rich text editor -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.snow.min.css" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.min.js"></script>
   <!-- Tesseract.js for OCR (scans printed/handwritten recipe images) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js"></script>
   <!-- PapaParse for CSV parsing in edit mode -->
@@ -186,40 +189,39 @@
           <input type="text" id="f-quantity" name="quantity" placeholder="e.g. Serves 4, Yields 2 cups">
         </div>
         <div class="form-group">
-          <label for="f-category">Category</label>
-          <select id="f-category" name="category">
-            <option value="">— Select a category —</option>
-            <option value="appetizers">Appetizers</option>
-            <option value="baking">Baking</option>
-            <option value="basic-building-blocks">Building Blocks</option>
-            <option value="beans">Beans</option>
-            <option value="breakfasts-breads">Breakfasts & Breads</option>
-            <option value="cocktails">Cocktails</option>
-            <option value="desserts">Desserts</option>
-            <option value="salsas-dips">Dips & Salsas</option>
-            <option value="easy-weeknight-meals">Easy Weeknight</option>
-            <option value="entertaining-meals-most-preparation-can-be-done-ahead-of-time">Entertaining (make-ahead)</option>
-            <option value="seafood">Fish & Seafood</option>
-            <option value="holiday-specials">Holiday</option>
-            <option value="interesting-but-not-tried">Interesting / Want to Try</option>
-            <option value="japan-southeast-asia">Japan & SE Asia</option>
-            <option value="latin-america">Latin America</option>
-            <option value="meat">Meat</option>
-            <option value="meatballs-sausages">Meatballs & Sausages</option>
-            <option value="mediterranean">Mediterranean</option>
-            <option value="pasta-rice">Pasta & Rice</option>
-            <option value="potatoes">Potatoes</option>
-            <option value="poultry">Poultry</option>
-            <option value="sauces-relishes">Sauces & Relishes</option>
-            <option value="rice-rice-dishes">Rice Dishes</option>
-            <option value="salads">Salads & Dressings</option>
-            <option value="sandwiches">Sandwiches</option>
-            <option value="simple-but-requires-marinading-or-day-before-preparation">Simple / Make Ahead</option>
-            <option value="soups">Soups</option>
-            <option value="stews-pies">Stews & Pies</option>
-            <option value="tapas">Tapas / Small Plates</option>
-            <option value="vegetables">Vegetables</option>
-          </select>
+          <label>Category <span style="font-weight:400;color:var(--ink-faint);font-size:0.8rem;">(select all that apply)</span></label>
+          <div class="admin-cat-pills" id="f-category-pills">
+            <button type="button" class="admin-cat-pill" data-value="appetizers">Appetizers</button>
+            <button type="button" class="admin-cat-pill" data-value="baking">Baking</button>
+            <button type="button" class="admin-cat-pill" data-value="basic-building-blocks">Building Blocks</button>
+            <button type="button" class="admin-cat-pill" data-value="beans">Beans</button>
+            <button type="button" class="admin-cat-pill" data-value="breakfasts-breads">Breakfasts & Breads</button>
+            <button type="button" class="admin-cat-pill" data-value="cocktails">Cocktails</button>
+            <button type="button" class="admin-cat-pill" data-value="desserts">Desserts</button>
+            <button type="button" class="admin-cat-pill" data-value="salsas-dips">Dips & Salsas</button>
+            <button type="button" class="admin-cat-pill" data-value="easy-weeknight-meals">Easy Weeknight</button>
+            <button type="button" class="admin-cat-pill" data-value="entertaining-meals-most-preparation-can-be-done-ahead-of-time">Entertaining</button>
+            <button type="button" class="admin-cat-pill" data-value="seafood">Fish & Seafood</button>
+            <button type="button" class="admin-cat-pill" data-value="holiday-specials">Holiday</button>
+            <button type="button" class="admin-cat-pill" data-value="interesting-but-not-tried">Want to Try</button>
+            <button type="button" class="admin-cat-pill" data-value="japan-southeast-asia">Japan & SE Asia</button>
+            <button type="button" class="admin-cat-pill" data-value="latin-america">Latin America</button>
+            <button type="button" class="admin-cat-pill" data-value="meat">Meat</button>
+            <button type="button" class="admin-cat-pill" data-value="meatballs-sausages">Meatballs & Sausages</button>
+            <button type="button" class="admin-cat-pill" data-value="mediterranean">Mediterranean</button>
+            <button type="button" class="admin-cat-pill" data-value="pasta-rice">Pasta & Rice</button>
+            <button type="button" class="admin-cat-pill" data-value="potatoes">Potatoes</button>
+            <button type="button" class="admin-cat-pill" data-value="poultry">Poultry</button>
+            <button type="button" class="admin-cat-pill" data-value="sauces-relishes">Sauces & Relishes</button>
+            <button type="button" class="admin-cat-pill" data-value="rice-rice-dishes">Rice Dishes</button>
+            <button type="button" class="admin-cat-pill" data-value="salads">Salads & Dressings</button>
+            <button type="button" class="admin-cat-pill" data-value="sandwiches">Sandwiches</button>
+            <button type="button" class="admin-cat-pill" data-value="simple-but-requires-marinading-or-day-before-preparation">Make Ahead</button>
+            <button type="button" class="admin-cat-pill" data-value="soups">Soups</button>
+            <button type="button" class="admin-cat-pill" data-value="stews-pies">Stews & Pies</button>
+            <button type="button" class="admin-cat-pill" data-value="tapas">Tapas</button>
+            <button type="button" class="admin-cat-pill" data-value="vegetables">Vegetables</button>
+          </div>
         </div>
       </div>
       <div class="form-group">
@@ -257,9 +259,8 @@
       <div class="form-section-title">🧂 Ingredients</div>
       <div class="form-group">
         <label>Ingredients List</label>
-        <p class="form-hint" style="margin-bottom:8px;">Enter one ingredient per line. Use a blank line to separate sections (e.g. "For the sauce:").</p>
-        <textarea id="f-ingredients" name="ingredients" rows="10"
-                  placeholder="4 cloves garlic, minced&#10;2 tbsp olive oil&#10;1 cup chicken stock&#10;…"></textarea>
+        <p class="form-hint" style="margin-bottom:8px;">One ingredient per line. Use the toolbar to bold key items, add links, or create sections.</p>
+        <div id="f-ingredients" class="quill-editor"></div>
       </div>
     </div>
 
@@ -270,9 +271,8 @@
       <div class="form-section-title">📋 Instructions</div>
       <div class="form-group">
         <label>Step-by-step Instructions</label>
-        <p class="form-hint" style="margin-bottom:8px;">Write each step on its own line. You can use blank lines to group steps.</p>
-        <textarea id="f-instructions" name="instructions" rows="12"
-                  placeholder="1. Preheat oven to 400°F.&#10;2. Season the chicken with salt and pepper.&#10;3. …"></textarea>
+        <p class="form-hint" style="margin-bottom:8px;">Write each step on its own line. Bold key terms, use numbered lists, or add links to techniques.</p>
+        <div id="f-instructions" class="quill-editor"></div>
       </div>
     </div>
 
@@ -288,10 +288,20 @@
       </div>
       <div class="form-row">
         <div class="form-group">
-          <label for="f-related">Related Recipes <span style="font-weight:400;color:var(--ink-faint)">(slugs, comma-separated)</span></label>
-          <input type="text" id="f-related" name="related"
-                 placeholder="basic-and-pure-chicken-stock, garlic-mashed-potatoes">
-          <p class="form-hint">Use the URL slug from the existing recipe URL.</p>
+          <label>Related Recipes</label>
+          <div class="related-dropdown-wrap" id="related-dropdown-wrap">
+            <button type="button" class="related-dropdown-btn" id="related-dropdown-btn" onclick="toggleRelatedPanel(event)">
+              <span id="related-btn-label">Choose recipes…</span>
+              <svg width="12" height="8" viewBox="0 0 12 8" fill="none"><path d="M1 1l5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </button>
+            <div class="related-panel" id="related-panel" style="display:none">
+              <input type="text" class="related-search" id="related-search" placeholder="Search recipes…" oninput="filterRelatedPanel(this.value)" onclick="event.stopPropagation()">
+              <div id="related-panel-items">
+                <p style="padding:8px 12px;font-size:0.8rem;color:var(--ink-faint);">Loading recipes…</p>
+              </div>
+            </div>
+          </div>
+          <p class="form-hint">Select all recipes that pair well with this one.</p>
         </div>
         <div class="form-group">
           <label for="f-principal-ingredients">Principal Ingredients</label>
@@ -451,7 +461,7 @@ function populateFromSchema(r, sourceUrl) {
 
   // Ingredients
   if (r.recipeIngredient?.length) {
-    set("f-ingredients", r.recipeIngredient.map(stripHtmlTags).join("\n"));
+    quillSetText(quillIngredients, r.recipeIngredient.map(stripHtmlTags).join("\n"));
   }
 
   // Instructions
@@ -474,7 +484,7 @@ function populateFromSchema(r, sourceUrl) {
     } else {
       steps.push(stripHtmlTags(String(raw)));
     }
-    set("f-instructions", steps.join("\n\n"));
+    quillSetText(quillInstructions, steps.join("\n\n"));
   }
 
   // Notes: add source credit
@@ -648,16 +658,16 @@ function parseOCRText(rawText) {
   if (ingStart < instrStart) {
     const ingLines = lines.slice(ingStart, instrStart).filter(l => l.length > 2);
     const instrLines = lines.slice(instrStart).filter(l => l.length > 2);
-    if (ingLines.length && !document.getElementById("f-ingredients").value.trim()) {
-      document.getElementById("f-ingredients").value = ingLines.join("\n");
+    if (ingLines.length && quillIsEmpty(quillIngredients)) {
+      quillSetText(quillIngredients, ingLines.join("\n"));
     }
-    if (instrLines.length && !document.getElementById("f-instructions").value.trim()) {
-      document.getElementById("f-instructions").value = instrLines.join("\n");
+    if (instrLines.length && quillIsEmpty(quillInstructions)) {
+      quillSetText(quillInstructions, instrLines.join("\n"));
     }
   } else {
     // Just dump all text into ingredients for manual review
-    if (!document.getElementById("f-ingredients").value.trim()) {
-      document.getElementById("f-ingredients").value = lines.slice(1).join("\n");
+    if (quillIsEmpty(quillIngredients)) {
+      quillSetText(quillIngredients, lines.slice(1).join("\n"));
     }
   }
 }
@@ -775,20 +785,18 @@ function parseVoiceTranscript() {
     const items = raw.split(/[,\n]|(?:\d+\.)/)
       .map(s => s.replace(/^ingredients?[:\s]*/i, "").trim())
       .filter(s => s.length > 2);
-    document.getElementById("f-ingredients").value = items.join("\n");
+    quillSetText(quillIngredients, items.join("\n"));
   }
 
   // Extract instructions
   const instrMatch = lower.match(/(?:instructions?|directions?|steps?|method|how to)[:\s]+([\s\S]*)/i);
-  if (instrMatch && !document.getElementById("f-instructions").value.trim()) {
+  if (instrMatch && quillIsEmpty(quillInstructions)) {
     const raw = text.substring(lower.indexOf(instrMatch[0].split(/[:\s]/)[0]));
-    document.getElementById("f-instructions").value = raw
-      .replace(/^(?:instructions?|directions?|steps?|method|how to)[:\s]*/i, "")
-      .trim();
+    quillSetText(quillInstructions, raw.replace(/^(?:instructions?|directions?|steps?|method|how to)[:\s]*/i, "").trim());
   }
 
   // If no keyword sections found, put all text into a notes field for review
-  if (!document.getElementById("f-ingredients").value.trim() && !document.getElementById("f-instructions").value.trim()) {
+  if (quillIsEmpty(quillIngredients) && quillIsEmpty(quillInstructions)) {
     document.getElementById("f-notes").value = text;
     document.getElementById("voice-status").textContent = "Transcript added to Notes — no ingredient/instruction sections detected. Edit the fields manually.";
     return;
@@ -800,6 +808,148 @@ function parseVoiceTranscript() {
 // ============================================================
 //  FORM SUBMIT → Google Apps Script
 // ============================================================
+
+// ---- Quill rich text editors ----
+const QUILL_TOOLBAR = [
+  ["bold", "italic"],
+  [{ list: "ordered" }, { list: "bullet" }],
+  ["link"],
+  ["clean"]
+];
+const quillIngredients = new Quill("#f-ingredients", {
+  theme: "snow",
+  placeholder: "4 cloves garlic, minced\n2 tbsp olive oil\n1 cup chicken stock…",
+  modules: { toolbar: QUILL_TOOLBAR }
+});
+const quillInstructions = new Quill("#f-instructions", {
+  theme: "snow",
+  placeholder: "1. Preheat oven to 400°F.\n2. Season the chicken with salt and pepper…",
+  modules: { toolbar: QUILL_TOOLBAR }
+});
+
+function quillGetHtml(editor) {
+  const html = editor.root.innerHTML;
+  return html === "<p><br></p>" ? "" : html;
+}
+function quillSetHtml(editor, html) {
+  if (!html) { editor.setContents([]); return; }
+  editor.root.innerHTML = html;
+}
+function quillSetText(editor, text) {
+  if (!text) { editor.setContents([]); return; }
+  // Convert plain text lines to simple paragraphs
+  const html = text.split(/\n+/).map(l => l.trim() ? `<p>${escHtml(l)}</p>` : "").join("");
+  editor.root.innerHTML = html || "";
+}
+function quillIsEmpty(editor) {
+  return editor.getText().trim().length === 0;
+}
+
+// ---- Category pill toggle ----
+document.querySelectorAll(".admin-cat-pill").forEach(btn => {
+  btn.addEventListener("click", () => btn.classList.toggle("active"));
+});
+
+function clearCategoryPills() {
+  document.querySelectorAll(".admin-cat-pill").forEach(b => b.classList.remove("active"));
+}
+
+// ---- Related recipes multi-select ----
+let selectedRelated = new Set();
+let relatedPanelBuilt = false;
+
+function toggleRelatedPanel(e) {
+  e.stopPropagation();
+  const panel = document.getElementById("related-panel");
+  const isOpen = panel.style.display !== "none";
+  panel.style.display = isOpen ? "none" : "flex";
+  if (!isOpen) {
+    buildRelatedPanel();
+    document.getElementById("related-search").focus();
+  }
+}
+
+function buildRelatedPanel() {
+  if (relatedPanelBuilt && allRecipesCache) return;
+  const itemsEl = document.getElementById("related-panel-items");
+  const recipes = allRecipesCache || [];
+  if (!recipes.length) {
+    // Load if not cached yet
+    if (!allRecipesCache) {
+      Papa.parse(CONFIG.SHEET_CSV_URL, {
+        download: true, header: true,
+        complete: result => {
+          allRecipesCache = result.data.filter(r => r["Name"]?.trim());
+          buildRelatedPanel();
+        }
+      });
+    }
+    return;
+  }
+  renderRelatedItems(recipes, "");
+  relatedPanelBuilt = true;
+}
+
+function renderRelatedItems(recipes, query) {
+  const itemsEl = document.getElementById("related-panel-items");
+  const currentSlug = document.getElementById("f-name")?.value?.trim()
+    ?.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const filtered = query
+    ? recipes.filter(r => r["Name"]?.toLowerCase().includes(query.toLowerCase()))
+    : recipes;
+  if (!filtered.length) {
+    itemsEl.innerHTML = `<p style="padding:8px 12px;font-size:0.8rem;color:var(--ink-faint);">No recipes found.</p>`;
+    return;
+  }
+  itemsEl.innerHTML = "";
+  filtered.slice(0, 60).forEach(r => {
+    const slug = r["Slug"]?.trim() || "";
+    if (slug === currentSlug) return; // don't show the recipe being edited
+    const label = document.createElement("label");
+    label.className = "related-panel-item";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.value = slug;
+    cb.checked = selectedRelated.has(slug);
+    cb.onchange = () => {
+      cb.checked ? selectedRelated.add(slug) : selectedRelated.delete(slug);
+      updateRelatedBtn();
+    };
+    label.appendChild(cb);
+    label.appendChild(document.createTextNode(r["Name"]?.trim() || slug));
+    itemsEl.appendChild(label);
+  });
+}
+
+function filterRelatedPanel(query) {
+  if (allRecipesCache) renderRelatedItems(allRecipesCache, query);
+}
+
+function updateRelatedBtn() {
+  const n = selectedRelated.size;
+  document.getElementById("related-btn-label").textContent =
+    n === 0 ? "Choose recipes…" : n === 1 ? [...selectedRelated][0].replace(/-/g, " ") : `${n} recipes selected`;
+  document.getElementById("related-dropdown-btn").classList.toggle("active", n > 0);
+}
+
+function setSelectedRelated(slugs) {
+  selectedRelated = new Set(slugs);
+  relatedPanelBuilt = false; // force rebuild so checkboxes reflect new state
+  updateRelatedBtn();
+}
+
+function clearRelated() {
+  selectedRelated.clear();
+  relatedPanelBuilt = false;
+  updateRelatedBtn();
+}
+
+// Close related panel on outside click
+document.addEventListener("click", e => {
+  if (!e.target.closest("#related-dropdown-wrap")) {
+    document.getElementById("related-panel").style.display = "none";
+  }
+});
 
 function submitForm(e) {
   e.preventDefault();
@@ -850,11 +1000,11 @@ function collectFormData() {
     Author:             document.getElementById("f-author").value.trim().toLowerCase().replace(/\s+/g,"-"),
     Quantity:           document.getElementById("f-quantity").value.trim(),
     "Brief description": document.getElementById("f-description").value.trim(),
-    Category:           document.getElementById("f-category").value,
+    Category:           [...document.querySelectorAll(".admin-cat-pill.active")].map(b=>b.dataset.value).join(";"),
     "Main image":        document.getElementById("f-image").value.trim(),
-    Ingredients:        plainToHtml(document.getElementById("f-ingredients").value),
-    Instructions:       plainToHtml(document.getElementById("f-instructions").value),
-    "Related recipes":       document.getElementById("f-related").value.trim(),
+    Ingredients:        quillGetHtml(quillIngredients),
+    Instructions:       quillGetHtml(quillInstructions),
+    "Related recipes":       [...selectedRelated].join(";"),
     "Principal ingredients": document.getElementById("f-principal-ingredients").value.trim(),
     "Chef's notes":          plainToHtml(document.getElementById("f-notes").value),
     "Created On":       new Date().toUTCString(),
@@ -1010,16 +1160,17 @@ function selectRecipeForEdit(index) {
   document.getElementById("f-quantity").value    = r["Quantity"]?.trim() || "";
   document.getElementById("f-description").value = r["Brief description"]?.trim() || "";
   document.getElementById("f-image").value       = r["Main image"]?.trim() || "";
-  document.getElementById("f-related").value              = (r["Related recipes"]||"").trim();
+  setSelectedRelated((r["Related recipes"]||"").split(";").map(s=>s.trim()).filter(Boolean));
   document.getElementById("f-principal-ingredients").value = (r["Principal ingredients"]||"").trim();
-  document.getElementById("f-ingredients").value           = htmlToPlain(r["Ingredients"]||"");
-  document.getElementById("f-instructions").value= htmlToPlain(r["Instructions"]||"");
+  quillSetHtml(quillIngredients, r["Ingredients"]||"");
+  quillSetHtml(quillInstructions, r["Instructions"]||"");
   document.getElementById("f-notes").value       = htmlToPlain(r["Chef's notes"]||"");
 
-  // Category select
-  const catSlug = (r["Category"]||"").split(";")[0].trim();
-  const catSelect = document.getElementById("f-category");
-  catSelect.value = catSlug;
+  // Category pills — activate all matching slugs
+  const catSlugs = new Set((r["Category"]||"").split(";").map(s=>s.trim()).filter(Boolean));
+  document.querySelectorAll(".admin-cat-pill").forEach(btn => {
+    btn.classList.toggle("active", catSlugs.has(btn.dataset.value));
+  });
 
   // Show selected banner, hide results
   document.getElementById("edit-selected-name").textContent = r["Name"];
@@ -1038,7 +1189,41 @@ function clearEditSelection() {
   document.getElementById("edit-results").innerHTML = "";
   document.getElementById("edit-search-input").value = "";
   document.getElementById("recipe-form").reset();
+  clearCategoryPills();
+  clearRelated();
+  quillIngredients.setContents([]);
+  quillInstructions.setContents([]);
 }
+
+// Auto-trigger edit mode if URL has ?edit=slug
+(function() {
+  const editSlugParam = new URLSearchParams(window.location.search).get("edit");
+  if (!editSlugParam) return;
+  // Switch to edit mode once the password gate clears
+  function tryAutoEdit() {
+    if (sessionStorage.getItem("jcb_admin_ok") !== "1") {
+      // Wait for login then try again
+      setTimeout(tryAutoEdit, 300);
+      return;
+    }
+    switchMode("edit");
+    // Load recipes then find and select the one matching the slug
+    if (!allRecipesCache) {
+      Papa.parse(CONFIG.SHEET_CSV_URL, {
+        download: true, header: true,
+        complete: result => {
+          allRecipesCache = result.data.filter(r => r["Name"]?.trim());
+          const match = allRecipesCache.findIndex(r => r["Slug"]?.trim() === editSlugParam);
+          if (match !== -1) {
+            searchMatches = [allRecipesCache[match]];
+            selectRecipeForEdit(0);
+          }
+        }
+      });
+    }
+  }
+  tryAutoEdit();
+})();
 </script>
 </body>
 </html>

@@ -191,6 +191,7 @@ function renderFromData(rows) {
   const favs = getFavs();
   const isFav = favs.has(recipe.slug) || recipe.favorite;
   const cats = recipe.categories;
+  const isAdmin = sessionStorage.getItem("jcb_admin_ok") === "1";
 
   // Build related recipes data
   const relatedSlugs = parseRelated(recipe.related);
@@ -236,7 +237,11 @@ function renderFromData(rows) {
           </div>` : ""}
 
           <div class="recipe-actions">
-            <button class="btn btn-outline" id="copy-ing-btn" onclick="copyIngredients()">Copy ingredients</button>
+            <button class="recipe-fav-btn${isFav ? " active" : ""}" id="fav-btn" onclick="handleFav()" title="${isFav ? "Remove from favorites" : "Add to favorites"}">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="${isFav ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+              <span>${isFav ? "Saved" : "Save"}</span>
+            </button>
+            ${isAdmin ? `<a class="btn btn-outline recipe-edit-btn" href="admin.html?edit=${encodeURIComponent(recipe.slug)}">✏️ Edit recipe</a>` : ""}
           </div>
         </div>
       </div>
@@ -248,7 +253,12 @@ function renderFromData(rows) {
 
         <!-- SIDEBAR: Ingredients -->
         <aside class="recipe-sidebar">
-          <div class="section-header">🧂 Ingredients</div>
+          <div class="section-header">
+            🧂 Ingredients
+            <button class="copy-ing-btn" id="copy-ing-btn" onclick="copyIngredients()" title="Copy ingredients">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            </button>
+          </div>
           ${ingItems.length > 0
             ? `<ul class="ingredients-list">${ingItems.map(i=>`<li>${escHtml(i)}</li>`).join("")}</ul>`
             : `<div class="instructions-block">${recipe.ingredients || "<p>See instructions.</p>"}</div>`}
@@ -301,11 +311,23 @@ function renderFromData(rows) {
       : recipe.ingredients.replace(/<[^>]+>/g, "").trim();
     navigator.clipboard.writeText(text).then(() => {
       const btn = document.getElementById("copy-ing-btn");
-      btn.textContent = "Copied!";
-      setTimeout(() => { btn.textContent = "Copy ingredients"; }, 2000);
+      btn.classList.add("copied");
+      btn.title = "Copied!";
+      setTimeout(() => { btn.classList.remove("copied"); btn.title = "Copy ingredients"; }, 2000);
     }).catch(() => {
       alert("Could not copy — please select the ingredients manually.");
     });
+  };
+
+  // Favorite toggle
+  window.handleFav = function() {
+    toggleFav(recipe.slug);
+    const isFavNow = getFavs().has(recipe.slug);
+    const btn = document.getElementById("fav-btn");
+    btn.classList.toggle("active", isFavNow);
+    btn.title = isFavNow ? "Remove from favorites" : "Add to favorites";
+    btn.querySelector("svg").setAttribute("fill", isFavNow ? "currentColor" : "none");
+    btn.querySelector("span").textContent = isFavNow ? "Saved" : "Save";
   };
 }
 

@@ -61,14 +61,20 @@
       <div class="filter-group" id="filter-group">
         <span class="filter-group-label">Filter by</span>
         <div class="filter-dropdowns">
-          <select id="category-select" class="filter-select" onchange="handleCategoryChange(this.value)">
-            <option value="">Category…</option>
-            <!-- options injected by JS -->
-          </select>
-          <select id="ingredient-select" class="filter-select" onchange="handleIngredientChange(this.value)" style="display:none">
-            <option value="">Ingredient…</option>
-            <!-- options injected by JS -->
-          </select>
+          <div class="filter-dropdown-wrap" id="cat-filter-wrap">
+            <button class="filter-select" id="cat-filter-btn" onclick="togglePanel('cat-panel', event)">Category…</button>
+            <div class="filter-panel" id="cat-panel" style="display:none">
+              <label class="filter-panel-clear" onclick="clearFilter('cat')">Clear</label>
+              <div id="cat-panel-items"></div>
+            </div>
+          </div>
+          <div class="filter-dropdown-wrap" id="ing-filter-wrap" style="display:none">
+            <button class="filter-select" id="ing-filter-btn" onclick="togglePanel('ing-panel', event)">Ingredient…</button>
+            <div class="filter-panel" id="ing-panel" style="display:none">
+              <label class="filter-panel-clear" onclick="clearFilter('ing')">Clear</label>
+              <div id="ing-panel-items"></div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -169,17 +175,17 @@ const PRIORITY_CATS = [
 ];
 
 let ALL_RECIPES = [];
-let activeCategory = null;
+let activeCategories = new Set();
 const showFavsOnly = false;
 let searchQuery = "";
 let sortMode = "az";        // "az" | "za" | "newest"
 let groupByCategory = false;
-let ingredientFilter = "";  // principal ingredient slug
+let ingredientFilters = new Set();
 
 // Parse URL params
 const urlParams = new URLSearchParams(window.location.search);
 if (urlParams.get("filter")) {
-  activeCategory = urlParams.get("filter");
+  activeCategories.add(urlParams.get("filter"));
 }
 
 // ---- Favorites (localStorage) ----
@@ -399,41 +405,59 @@ function processData(rows, fromCache = false) {
   renderGrid();
 }
 
-// ---- Build filter dropdowns ----
+// ---- Build filter panels ----
+const ingLabel = i => i.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+
 function buildFilters() {
-  // --- Category dropdown: priority order then alpha ---
+  // --- Category checkboxes ---
   const allCats = new Set();
   ALL_RECIPES.forEach(r => r.categories.forEach(c => allCats.add(c)));
 
-  const catSelect = document.getElementById("category-select");
+  const catItems = document.getElementById("cat-panel-items");
   [...allCats]
     .sort((a, b) => (CATEGORIES[a] || a).localeCompare(CATEGORIES[b] || b))
     .forEach(cat => {
-    const opt = document.createElement("option");
-    opt.value = cat;
-    opt.textContent = CATEGORIES[cat] || cat.replace(/-/g, " ");
-    if (cat === activeCategory) opt.selected = true;
-    catSelect.appendChild(opt);
-  });
+      const label = document.createElement("label");
+      label.className = "filter-panel-item";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.value = cat;
+      cb.checked = activeCategories.has(cat);
+      cb.onchange = () => {
+        cb.checked ? activeCategories.add(cat) : activeCategories.delete(cat);
+        updateFilterBtn("cat");
+        renderGrid();
+      };
+      label.appendChild(cb);
+      label.appendChild(document.createTextNode(CATEGORIES[cat] || cat.replace(/-/g, " ")));
+      catItems.appendChild(label);
+    });
 
-  // --- Ingredient dropdown: frequency desc, then alpha ---
+  // --- Ingredient checkboxes ---
   const ingCount = new Map();
   ALL_RECIPES.forEach(r => r.principalIngredients.forEach(i => ingCount.set(i, (ingCount.get(i) || 0) + 1)));
 
   if (ingCount.size > 0) {
-    const ingLabel = i => i.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
-    const sorted = [...ingCount.keys()]
-      .sort((a, b) => ingLabel(a).localeCompare(ingLabel(b)));
-
-    const ingSelect = document.getElementById("ingredient-select");
-    sorted.forEach(ing => {
-      const opt = document.createElement("option");
-      opt.value = ing;
-      opt.textContent = ingLabel(ing);
-      if (ing === ingredientFilter) opt.selected = true;
-      ingSelect.appendChild(opt);
-    });
-    ingSelect.style.display = "";
+    const ingItems = document.getElementById("ing-panel-items");
+    [...ingCount.keys()]
+      .sort((a, b) => ingLabel(a).localeCompare(ingLabel(b)))
+      .forEach(ing => {
+        const label = document.createElement("label");
+        label.className = "filter-panel-item";
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.value = ing;
+        cb.checked = ingredientFilters.has(ing);
+        cb.onchange = () => {
+          cb.checked ? ingredientFilters.add(ing) : ingredientFilters.delete(ing);
+          updateFilterBtn("ing");
+          renderGrid();
+        };
+        label.appendChild(cb);
+        label.appendChild(document.createTextNode(ingLabel(ing)));
+        ingItems.appendChild(label);
+      });
+    document.getElementById("ing-filter-wrap").style.display = "";
   }
 
   // --- Spotlight: 3 most recently added recipes ---
@@ -442,6 +466,52 @@ function buildFilters() {
   // Reveal view controls now that data is loaded
   document.getElementById("view-controls").style.display = "flex";
 }
+
+function updateFilterBtn(type) {
+  if (type === "cat") {
+    const btn = document.getElementById("cat-filter-btn");
+    const n = activeCategories.size;
+    btn.textContent = n === 0 ? "Category…"
+      : n === 1 ? (CATEGORIES[[...activeCategories][0]] || [...activeCategories][0])
+      : `${n} categories`;
+    btn.classList.toggle("active", n > 0);
+  } else {
+    const btn = document.getElementById("ing-filter-btn");
+    const n = ingredientFilters.size;
+    btn.textContent = n === 0 ? "Ingredient…"
+      : n === 1 ? ingLabel([...ingredientFilters][0])
+      : `${n} ingredients`;
+    btn.classList.toggle("active", n > 0);
+  }
+}
+
+function togglePanel(panelId, e) {
+  e.stopPropagation();
+  const panel = document.getElementById(panelId);
+  const isOpen = panel.style.display !== "none";
+  document.querySelectorAll(".filter-panel").forEach(p => p.style.display = "none");
+  if (!isOpen) panel.style.display = "block";
+}
+
+function clearFilter(type) {
+  if (type === "cat") {
+    activeCategories.clear();
+    document.querySelectorAll("#cat-panel-items input").forEach(cb => cb.checked = false);
+    updateFilterBtn("cat");
+  } else {
+    ingredientFilters.clear();
+    document.querySelectorAll("#ing-panel-items input").forEach(cb => cb.checked = false);
+    updateFilterBtn("ing");
+  }
+  renderGrid();
+}
+
+// Close panels when clicking outside
+document.addEventListener("click", e => {
+  if (!e.target.closest(".filter-dropdown-wrap")) {
+    document.querySelectorAll(".filter-panel").forEach(p => p.style.display = "none");
+  }
+});
 
 // ---- Spotlight: 3 newest recipes ----
 function buildSpotlight() {
@@ -464,11 +534,6 @@ function clearSpotlight() {
   document.getElementById("spotlight-section").style.display = "none";
 }
 
-function handleCategoryChange(val) {
-  activeCategory = val || null;
-  document.getElementById("category-select").classList.toggle("active", !!activeCategory);
-  renderGrid();
-}
 
 // ---- Search ----
 document.addEventListener("DOMContentLoaded", () => {
@@ -484,8 +549,8 @@ document.addEventListener("DOMContentLoaded", () => {
     renderGrid();
   });
 
-  // If URL had a filter param, activate it
-  if (activeCategory) updateFilters();
+  // If URL had a filter param, activate the button label
+  if (activeCategories.size > 0) updateFilterBtn("cat");
 
   loadRecipes();
 });
@@ -495,8 +560,8 @@ function filteredRecipes() {
   const favs = getFavs();
   let result = ALL_RECIPES.filter(r => {
     if (r.name.toLowerCase().includes("need") && r.instructions.toLowerCase().includes("need data")) return false; // skip stubs
-    if (activeCategory && !r.categories.includes(activeCategory)) return false;
-    if (ingredientFilter && !r.principalIngredients.includes(ingredientFilter)) return false;
+    if (activeCategories.size > 0 && !r.categories.some(c => activeCategories.has(c))) return false;
+    if (ingredientFilters.size > 0 && !r.principalIngredients.some(i => ingredientFilters.has(i))) return false;
     if (searchQuery) {
       const haystack = [r.name, r.description, stripHtml(r.ingredients), r.categories.join(" "), authorName(r.author)].join(" ").toLowerCase();
       if (!haystack.includes(searchQuery)) return false;
@@ -666,11 +731,6 @@ function setSort(mode) {
   renderGrid();
 }
 
-function handleIngredientChange(val) {
-  ingredientFilter = val;
-  document.getElementById("ingredient-select").classList.toggle("active", !!val);
-  renderGrid();
-}
 
 function toggleGroup() {
   groupByCategory = !groupByCategory;
