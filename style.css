@@ -817,6 +817,8 @@ mark.search-hl {
 .instructions-block figure { margin: 18px 0; }
 .instructions-block figcaption { font-size: 0.78rem; color: var(--ink-faint); margin-top: 6px; }
 .instructions-block strong, .instructions-block em { color: var(--ink); }
+.instructions-block a { color: var(--accent-dark); text-decoration: underline; }
+.instructions-block a:hover { opacity: 0.75; }
 
 /* Notes card */
 .notes-card {
