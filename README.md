@@ -1,5 +1,7 @@
 # The Johnson Cookbook
 
+Live at [thejohnsoncookbook.com](https://thejohnsoncookbook.com)
+
 A family recipe site backed by Google Sheets. No server, no framework — just HTML, CSS, and JavaScript.
 
 ---
