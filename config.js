@@ -33,4 +33,11 @@ const CONFIG = {
 
   // Fallback placeholder image when a recipe has no photo
   PLACEHOLDER_IMAGE: "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=600&q=80",
+
+  // Cloudflare Worker that proxies recipe-page fetches for the
+  // "Import from a URL" tool (see proxy/ and proxy/README.md).
+  // Paste the deployed worker URL here, e.g.
+  // https://johnson-cookbook-proxy.<your-subdomain>.workers.dev
+  // Leave blank to fall back to public CORS proxies.
+  RECIPE_PROXY_URL: "",
 };

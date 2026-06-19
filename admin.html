@@ -342,6 +342,62 @@
 //  URL IMPORT — schema.org/Recipe parser
 // ============================================================
 
+// Try a series of public CORS proxies until one returns usable HTML.
+// Each entry: build(url) → proxied URL, and unwrap(responseText) → page HTML.
+const CORS_PROXIES = [
+  {
+    name: "allorigins",
+    build: u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+    unwrap: t => t,
+  },
+  {
+    name: "corsproxy.io",
+    build: u => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,
+    unwrap: t => t,
+  },
+  {
+    name: "codetabs",
+    build: u => `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(u)}`,
+    unwrap: t => t,
+  },
+  {
+    name: "allorigins-json",
+    build: u => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`,
+    unwrap: t => { try { return JSON.parse(t).contents || ""; } catch { return ""; } },
+  },
+];
+
+async function fetchPageViaProxy(url, statusEl) {
+  // Prefer the dedicated Cloudflare Worker if configured; fall back to
+  // the public proxies if it's blank or fails.
+  const proxies = [];
+  if (window.CONFIG && CONFIG.RECIPE_PROXY_URL) {
+    proxies.push({
+      name: "cookbook-proxy",
+      build: u => `${CONFIG.RECIPE_PROXY_URL}?url=${encodeURIComponent(u)}`,
+      unwrap: t => t,
+    });
+  }
+  proxies.push(...CORS_PROXIES);
+
+  let lastErr = "";
+  for (const proxy of proxies) {
+    try {
+      if (statusEl) statusEl.textContent = `Fetching page… (via ${proxy.name})`;
+      const res = await fetch(proxy.build(url));
+      if (!res.ok) { lastErr = `HTTP ${res.status}`; continue; }
+      const text = await res.text();
+      const html = proxy.unwrap(text);
+      // Need enough content to plausibly contain a recipe page
+      if (html && html.length > 500) return html;
+      lastErr = "empty response";
+    } catch (e) {
+      lastErr = e.message || String(e);
+    }
+  }
+  throw new Error("Couldn't reach that URL through any proxy (" + lastErr + "). The site may be down or blocking automated access.");
+}
+
 async function importFromURL() {
   const input = document.getElementById("url-import-input");
   const statusEl = document.getElementById("url-import-status");
@@ -356,12 +412,9 @@ async function importFromURL() {
   statusEl.textContent = "Fetching page…";
 
   try {
-    // allorigins proxies the request to bypass CORS
-    const proxy = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
-    const res = await fetch(proxy);
-    if (!res.ok) throw new Error("Could not reach that URL (HTTP " + res.status + ")");
-    const data = await res.json();
-    const html = data.contents;
+    // Fetch the page HTML through a CORS proxy. Public proxies go down
+    // regularly, so we try several and use the first that responds.
+    const html = await fetchPageViaProxy(url, statusEl);
     if (!html) throw new Error("Page returned empty content");
 
     statusEl.textContent = "Parsing recipe data…";
@@ -583,7 +636,7 @@ async function runOCR() {
     const worker = await Tesseract.createWorker("eng", 1, {
       workerPath: "https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/worker.min.js",
       langPath:   "https://tessdata.projectnaptha.com/4.0.0",
-      corePath:   "https://cdn.jsdelivr.net/npm/tesseract.js-core@4.0.3/tesseract-core-simd-lstm.wasm.js",
+      corePath:   "https://cdn.jsdelivr.net/npm/tesseract.js-core@4.0.3/tesseract-core-simd.wasm.js",
       logger: m => {
         if (m.status === "recognizing text") {
           const pct = Math.round(m.progress * 100);
