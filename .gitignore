@@ -5,3 +5,6 @@ migration_log.txt
 
 # Apps Script source (deploy via script.google.com, not git)
 apps-script.gs
+
+# macOS Finder metadata
+.DS_Store
