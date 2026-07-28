@@ -1530,6 +1530,25 @@ function submitArticle(e) {
     btn.disabled = false;
   });
 }
+
+// Auto-open an article in edit mode if the URL has ?editArticle=slug
+// (used by the "Edit article" button on article.html).
+(function () {
+  const slug = new URLSearchParams(window.location.search).get("editArticle");
+  if (!slug) return;
+  (function tryAutoEditArticle() {
+    if (sessionStorage.getItem("jcb_admin_ok") !== "1") { setTimeout(tryAutoEditArticle, 300); return; }
+    switchContentType("article");
+    switchArticleMode("edit");
+    loadArticlesForSearch(function () {
+      const idx = (articleCache || []).findIndex(r => (r["Slug"] || "").trim() === slug);
+      if (idx !== -1) {
+        articleMatches = [articleCache[idx]];
+        selectArticleForEdit(0);
+      }
+    });
+  })();
+})();
 </script>
 </body>
 </html>

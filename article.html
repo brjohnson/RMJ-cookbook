@@ -118,6 +118,9 @@ function renderFromData(rows) {
           </div>
           <h1 class="recipe-title">${escHtml(article.name)}</h1>
           ${byline ? `<div class="recipe-byline">${byline}</div>` : ""}
+          <div class="recipe-actions">
+            <a class="btn btn-outline recipe-edit-btn" href="admin.html?editArticle=${encodeURIComponent(article.slug)}">✏️ Edit article</a>
+          </div>
         </div>
       </div>
     </div>
