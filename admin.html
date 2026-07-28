@@ -82,6 +82,7 @@
     <a class="nav-brand" href="/">🥘 The Johnson Cookbook</a>
     <div class="nav-links">
       <a class="nav-link" href="/">← All Recipes</a>
+      <a class="nav-link" href="articles.html">Articles</a>
       <a class="nav-link nav-link-favorites" href="favorites.html"><span class="nav-fav-full">★ My Favorites</span><span class="nav-fav-short">★</span></a>
     </div>
   </div>
@@ -91,6 +92,15 @@
 <main class="page admin-page">
   <h1 id="page-heading">Add a New Recipe</h1>
   <p class="subtitle" id="page-subtitle">Share a family recipe by typing, scanning a photo, or describing it with your voice.</p>
+
+  <!-- Content-type toggle: Recipes vs Articles -->
+  <div class="mode-toggle-row content-type-toggle">
+    <button type="button" class="mode-btn active" id="ct-recipe-btn" onclick="switchContentType('recipe')">🥘 Recipes</button>
+    <button type="button" class="mode-btn" id="ct-article-btn" onclick="switchContentType('article')">📖 Articles</button>
+  </div>
+
+  <!-- ============ RECIPE PANEL ============ -->
+  <div id="recipe-panel">
 
   <!-- Mode toggle -->
   <div class="mode-toggle-row">
@@ -330,6 +340,63 @@
     </div>
 
   </form>
+  </div><!-- /#recipe-panel -->
+
+  <!-- ============ ARTICLE PANEL ============ -->
+  <div id="article-panel" style="display:none">
+
+    <!-- Add / Edit toggle -->
+    <div class="mode-toggle-row">
+      <button type="button" class="mode-btn active" id="art-mode-add-btn" onclick="switchArticleMode('add')">Add article</button>
+      <button type="button" class="mode-btn" id="art-mode-edit-btn" onclick="switchArticleMode('edit')">Edit article</button>
+    </div>
+
+    <!-- Edit search (hidden in add mode) -->
+    <div class="edit-search-section" id="art-edit-search-section" style="display:none">
+      <input type="text" class="edit-search-input" id="art-edit-search-input"
+             placeholder="Search for an article to edit…" oninput="searchArticles(this.value)" autocomplete="off">
+      <div class="edit-results" id="art-edit-results"></div>
+      <div class="edit-selected-banner" id="art-edit-selected-banner" style="display:none">
+        Editing: <strong id="art-edit-selected-name"></strong>
+        <button type="button" class="edit-change-btn" onclick="clearArticleEditSelection()">Change article</button>
+      </div>
+    </div>
+
+    <form id="article-form" onsubmit="submitArticle(event)">
+      <div class="form-section">
+        <div class="form-section-title">📝 Article</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="fa-name">Title *</label>
+            <input type="text" id="fa-name" required placeholder="e.g. Cooking a steak without a grill">
+          </div>
+          <div class="form-group">
+            <label for="fa-author">Author</label>
+            <input type="text" id="fa-author" placeholder="e.g. Russ Johnson">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Body</label>
+          <p class="form-hint" style="margin-bottom:8px;">Write the article. Use the toolbar for headings, bold, lists, and links.</p>
+          <div id="fa-body" class="quill-editor"></div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-title">✅ Save Article</div>
+        <p style="font-size:0.875rem;color:var(--ink-faint);margin-bottom:16px;">
+          The article will be sent to the <strong>articles</strong> tab of your Google Sheet via the same Apps Script webhook.
+        </p>
+        <div class="form-submit-row">
+          <button type="submit" class="btn btn-primary" id="art-submit-btn">
+            💾 <span id="art-submit-btn-label">Save Article</span>
+          </button>
+          <button type="button" class="btn btn-outline" onclick="clearArticleForm()">🗑 Clear</button>
+          <span class="submit-status" id="art-submit-status"></span>
+        </div>
+      </div>
+    </form>
+  </div><!-- /#article-panel -->
 </main>
 
 <!-- FOOTER -->
@@ -1277,6 +1344,205 @@ function clearEditSelection() {
   }
   tryAutoEdit();
 })();
+</script>
+
+<script>
+// ============================================================
+//  ARTICLES ADMIN  (self-contained; reuses global Quill/helpers)
+// ============================================================
+
+// Rich-text editor for the article body — headings enabled since
+// guidance pieces use section titles.
+const quillArticleBody = new Quill("#fa-body", {
+  theme: "snow",
+  placeholder: "Write the article…",
+  modules: { toolbar: [
+    [{ header: [2, 3, 4, false] }],
+    ["bold", "italic"],
+    [{ list: "ordered" }, { list: "bullet" }],
+    ["link"],
+    ["clean"]
+  ] }
+});
+
+let contentType     = "recipe";
+let articleCache    = null;
+let articleMatches  = [];
+let articleEditMode = false;
+let articleEditSlug = null;
+
+// ---- Top-level Recipes / Articles switch ----
+function switchContentType(type) {
+  contentType = type;
+  const isArticle = type === "article";
+  document.getElementById("recipe-panel").style.display  = isArticle ? "none" : "";
+  document.getElementById("article-panel").style.display = isArticle ? "" : "none";
+  document.getElementById("ct-recipe-btn").classList.toggle("active", !isArticle);
+  document.getElementById("ct-article-btn").classList.toggle("active", isArticle);
+
+  if (isArticle) {
+    switchArticleMode(articleEditMode ? "edit" : "add");
+  } else {
+    // Restore the recipe heading/subtitle for the current recipe mode
+    document.getElementById("page-heading").textContent = editMode ? "Edit a Recipe" : "Add a New Recipe";
+    document.getElementById("page-subtitle").textContent = editMode
+      ? "Search for a recipe, make your changes, and save."
+      : "Share a family recipe by typing, scanning a photo, or describing it with your voice.";
+  }
+}
+
+// ---- Add / Edit sub-mode within Articles ----
+function switchArticleMode(mode) {
+  articleEditMode = mode === "edit";
+  document.getElementById("art-mode-add-btn").classList.toggle("active", !articleEditMode);
+  document.getElementById("art-mode-edit-btn").classList.toggle("active", articleEditMode);
+  document.getElementById("art-edit-search-section").style.display = articleEditMode ? "block" : "none";
+  document.getElementById("page-heading").textContent = articleEditMode ? "Edit an Article" : "Add a New Article";
+  document.getElementById("page-subtitle").textContent = articleEditMode
+    ? "Search for an article, make your changes, and save."
+    : "Write a guidance piece — a tip, technique, or reference note.";
+  document.getElementById("art-submit-btn-label").textContent = articleEditMode ? "Save Changes" : "Save Article";
+  document.getElementById("art-submit-status").textContent = "";
+
+  if (articleEditMode && !articleCache) loadArticlesForSearch();
+  clearArticleEditSelection();
+}
+
+// ---- Load the articles data (Sheet CSV, else local articles.csv) ----
+function loadArticlesForSearch(cb) {
+  const resultsEl = document.getElementById("art-edit-results");
+  if (resultsEl) resultsEl.innerHTML = '<p style="padding:10px 14px;font-size:0.82rem;color:var(--ink-faint)">Loading articles…</p>';
+  const done = rows => {
+    articleCache = (rows || []).filter(r => r["Name"] && r["Name"].trim());
+    if (resultsEl) resultsEl.innerHTML = "";
+    if (cb) cb();
+  };
+  const fail = () => { if (resultsEl) resultsEl.innerHTML = '<p style="padding:10px 14px;font-size:0.82rem;color:#c0392b">Could not load articles.</p>'; };
+
+  const url = CONFIG.ARTICLES_CSV_URL;
+  if (url && !url.includes("YOUR_")) {
+    Papa.parse(url, { download: true, header: true,
+      complete: res => done(res.data),
+      error: () => fetchLocalArticles(done, fail) });
+  } else {
+    fetchLocalArticles(done, fail);
+  }
+}
+function fetchLocalArticles(done, fail) {
+  fetch("articles.csv")
+    .then(r => { if (!r.ok) throw new Error("not found"); return r.text(); })
+    .then(t => Papa.parse(t, { header: true, complete: res => done(res.data) }))
+    .catch(fail || (() => done([])));
+}
+
+// ---- Search existing articles ----
+function searchArticles(query) {
+  const el = document.getElementById("art-edit-results");
+  if (!query.trim()) { el.innerHTML = ""; articleMatches = []; return; }
+  if (!articleCache) return;
+  const q = query.toLowerCase();
+  articleMatches = articleCache.filter(r => r["Name"] && r["Name"].toLowerCase().includes(q)).slice(0, 8);
+  if (!articleMatches.length) {
+    el.innerHTML = '<p style="padding:10px 14px;font-size:0.82rem;color:var(--ink-faint)">No articles found.</p>';
+    return;
+  }
+  el.innerHTML = articleMatches.map((r, i) =>
+    `<div class="edit-result-item" onclick="selectArticleForEdit(${i})">
+      <span class="edit-result-name">${escHtml(r["Name"])}</span>
+      <span class="edit-result-cat">${escHtml(slugToDisplayName((r["Author"]||"").trim()) || "—")}</span>
+    </div>`).join("");
+}
+
+// ---- Load a selected article into the form ----
+function selectArticleForEdit(index) {
+  const r = articleMatches[index];
+  if (!r) return;
+  articleEditSlug = (r["Slug"] || "").trim();
+  document.getElementById("fa-name").value   = (r["Name"] || "").trim();
+  document.getElementById("fa-author").value = slugToDisplayName((r["Author"] || "").trim());
+  quillSetHtml(quillArticleBody, r["Body"] || "");
+
+  document.getElementById("art-edit-selected-name").textContent = r["Name"];
+  document.getElementById("art-edit-selected-banner").style.display = "flex";
+  document.getElementById("art-edit-results").innerHTML = "";
+  document.getElementById("art-edit-search-input").value = "";
+  document.getElementById("article-form").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function clearArticleEditSelection() {
+  articleEditSlug = null;
+  const banner = document.getElementById("art-edit-selected-banner");
+  if (banner) banner.style.display = "none";
+  document.getElementById("art-edit-selected-name").textContent = "";
+  document.getElementById("art-edit-results").innerHTML = "";
+  const si = document.getElementById("art-edit-search-input");
+  if (si) si.value = "";
+  document.getElementById("article-form").reset();
+  quillArticleBody.setContents([]);
+}
+
+function clearArticleForm() {
+  if (!confirm("Clear the article?")) return;
+  document.getElementById("article-form").reset();
+  quillArticleBody.setContents([]);
+  document.getElementById("art-submit-status").textContent = "";
+}
+
+// ---- Collect + submit ----
+function collectArticleData() {
+  const name = document.getElementById("fa-name").value.trim();
+  const slug = articleEditSlug || name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  return {
+    type:         "article",
+    action:       articleEditMode ? "update" : "add",
+    originalSlug: articleEditSlug || "",
+    Name:         name,
+    Slug:         slug,
+    Author:       document.getElementById("fa-author").value.trim().toLowerCase().replace(/\s+/g, "-"),
+    Body:         quillGetHtml(quillArticleBody),
+    "Created On": new Date().toUTCString(),
+    Draft:        "false",
+    Archived:     "false",
+  };
+}
+
+function submitArticle(e) {
+  e.preventDefault();
+  const status = document.getElementById("art-submit-status");
+  const btn = document.getElementById("art-submit-btn");
+
+  if (!CONFIG.APPS_SCRIPT_URL || CONFIG.APPS_SCRIPT_URL.includes("YOUR_")) {
+    status.className = "submit-status error";
+    status.textContent = "No Apps Script URL configured — can't save.";
+    return;
+  }
+  const data = collectArticleData();
+  if (!data.Name) { status.className = "submit-status error"; status.textContent = "Please add a title."; return; }
+
+  btn.disabled = true;
+  status.className = "submit-status";
+  status.textContent = articleEditMode ? "Saving changes…" : "Saving…";
+
+  fetch(CONFIG.APPS_SCRIPT_URL, {
+    method: "POST",
+    mode: "no-cors",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  })
+  .then(() => {
+    status.className = "submit-status success";
+    status.textContent = articleEditMode
+      ? "✅ Changes saved! The site updates after the sheet refreshes."
+      : "✅ Article saved! It'll appear after the sheet refreshes.";
+    btn.disabled = false;
+    if (!articleEditMode) { document.getElementById("article-form").reset(); quillArticleBody.setContents([]); }
+  })
+  .catch(err => {
+    status.className = "submit-status error";
+    status.textContent = "❌ Error: " + err.message;
+    btn.disabled = false;
+  });
+}
 </script>
 </body>
 </html>

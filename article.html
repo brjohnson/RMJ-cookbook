@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Article — The Johnson Cookbook</title>
+  <meta property="og:title" content="Article — The Johnson Cookbook">
+  <meta property="og:image" content="https://thejohnsoncookbook.com/og-default.jpg">
+  <meta property="og:type" content="article">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🥘</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="nav-brand" href="/">🥘 The Johnson Cookbook</a>
+    <div class="nav-links">
+      <a class="nav-link" href="articles.html">← All Articles</a>
+      <a class="nav-link nav-link-favorites" href="favorites.html"><span class="nav-fav-full">★ My Favorites</span><span class="nav-fav-short">★</span></a>
+      <a class="nav-link nav-link-primary" href="admin.html">Admin</a>
+    </div>
+  </div>
+</nav>
+
+<!-- CONTENT injected by JS -->
+<div id="page-content">
+  <div style="text-align:center;padding:120px 24px;">
+    <div class="spinner" style="margin:0 auto 16px;"></div>
+    <p style="color:var(--ink-faint)">Loading article…</p>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script>
+// ============================================================
+//  ARTICLE DETAIL PAGE
+// ============================================================
+
+function authorName(s) { return s ? s.replace(/-/g," ").replace(/\b\w/g,c=>c.toUpperCase()) : ""; }
+function escHtml(s) { return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function stripHtml(html) { return html ? html.replace(/<[^>]*>/g," ").replace(/\s+/g," ").trim() : ""; }
+function isTruthy(v) { return String(v || "").trim().toLowerCase() === "true"; }
+
+const urlId = new URLSearchParams(window.location.search).get("id") || "";
+
+function loadLocalAndRender() {
+  fetch("articles.csv")
+    .then(r => { if (!r.ok) throw new Error("articles.csv not found"); return r.text(); })
+    .then(text => Papa.parse(text, { header: true, complete: res => renderFromData(res.data) }))
+    .catch(renderError);
+}
+
+function loadAndRender() {
+  if (!CONFIG.ARTICLES_CSV_URL || CONFIG.ARTICLES_CSV_URL.includes("YOUR_")) {
+    loadLocalAndRender();
+    return;
+  }
+  Papa.parse(CONFIG.ARTICLES_CSV_URL, {
+    download: true, header: true,
+    complete: res => {
+      const valid = (res.data || []).filter(r => r["Name"] && r["Name"].trim());
+      if (valid.length === 0) loadLocalAndRender(); else renderFromData(res.data);
+    },
+    error: () => loadLocalAndRender()
+  });
+}
+
+function renderError() {
+  document.getElementById("page-content").innerHTML = `
+    <div style="text-align:center;padding:120px 24px;">
+      <span style="font-size:3rem">😕</span>
+      <h2 style="font-family:var(--font-serif);margin:16px 0 8px;">Article not found</h2>
+      <p style="color:var(--ink-faint)"><a href="articles.html">← Back to all articles</a></p>
+    </div>`;
+}
+
+function renderFromData(rows) {
+  const all = rows
+    .filter(r => r["Name"]?.trim() && !isTruthy(r["Archived"]) && !isTruthy(r["Draft"]))
+    .map(r => ({
+      name:      (r["Name"] || "").trim(),
+      slug:      (r["Slug"] || "").trim(),
+      author:    (r["Author"] || "").trim(),
+      published: (r["Published On"] || "").trim(),
+      body:      (r["Body"] || "").trim(),
+    }));
+
+  const article = all.find(a => a.slug === urlId || a.name.toLowerCase().replace(/\s+/g,"-") === urlId);
+  if (!article) { renderError(); return; }
+
+  // Page title + OG tags
+  document.title = `${article.name} — The Johnson Cookbook`;
+  document.querySelector('meta[property="og:title"]')?.setAttribute("content", `${article.name} — The Johnson Cookbook`);
+  document.querySelector('meta[property="og:description"]')?.setAttribute("content", stripHtml(article.body).slice(0, 160) || "An article from The Johnson Cookbook.");
+
+  let pubDate = "";
+  if (article.published) {
+    try { pubDate = new Date(article.published).toLocaleDateString("en-US",{year:"numeric",month:"long"}); } catch {}
+  }
+  const byline = [article.author ? "By " + authorName(article.author) : "", pubDate].filter(Boolean).join(" &mdash; ");
+
+  document.getElementById("page-content").innerHTML = `
+    <div class="recipe-hero">
+      <div class="recipe-hero-inner hero-no-image">
+        <div class="recipe-hero-info">
+          <div class="recipe-meta-row">
+            <span class="recipe-cat-tag" style="background:hsl(196,52%,90%);color:hsl(196,48%,26%)">Article</span>
+          </div>
+          <h1 class="recipe-title">${escHtml(article.name)}</h1>
+          ${byline ? `<div class="recipe-byline">${byline}</div>` : ""}
+        </div>
+      </div>
+    </div>
+
+    <div class="recipe-body-outer">
+      <div class="page">
+        <div class="instructions-block" style="max-width:760px;">
+          ${article.body || "<p>No content provided.</p>"}
+        </div>
+        <p style="margin-top:40px;"><a class="nav-link" href="articles.html" style="color:var(--accent-dark);text-decoration:underline;">← Back to all articles</a></p>
+      </div>
+    </div>
+  `;
+}
+
+loadAndRender();
+</script>
+</body>
+</html>

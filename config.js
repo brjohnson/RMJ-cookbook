@@ -13,6 +13,12 @@ const CONFIG = {
   //
   SHEET_CSV_URL: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQK4UUmFRqF2v4zqHFcDopyHzzVRTiN72y-ybP61kV21y_C8bubDIgz2uU58SoaNzAI63Uy0QEpB5rl/pub?gid=1427526970&single=true&output=csv",
 
+  // Published CSV URL for the ARTICLES sheet tab (guidance pieces).
+  // Publish the Articles tab the same way as the recipes sheet
+  // (File → Share → Publish to web → that tab → CSV) and paste the link here.
+  // Leave blank to fall back to the local articles.csv bundled with the site.
+  ARTICLES_CSV_URL: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQK4UUmFRqF2v4zqHFcDopyHzzVRTiN72y-ybP61kV21y_C8bubDIgz2uU58SoaNzAI63Uy0QEpB5rl/pub?gid=2000395752&single=true&output=csv",
+
   // STEP 2: Paste your Google Apps Script Web App URL here (for adding recipes).
   // See README.md for instructions on setting up the Apps Script.
   APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbx84qpC0PGUelGNgzxV8_rQSDqn3MlnDBnkBcyb42GMwX1ZoJ8IbIV2CX_xHQKQNEH6/exec",

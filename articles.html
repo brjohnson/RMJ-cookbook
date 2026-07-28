@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Articles — The Johnson Cookbook</title>
+  <meta property="og:title" content="Articles — The Johnson Cookbook">
+  <meta property="og:image" content="https://thejohnsoncookbook.com/og-default.jpg">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://thejohnsoncookbook.com/articles.html">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🥘</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="nav-brand" href="/">🥘 The Johnson Cookbook</a>
+    <div class="nav-links">
+      <a class="nav-link" href="/">All Recipes</a>
+      <a class="nav-link active" href="articles.html">Articles</a>
+      <a class="nav-link nav-link-favorites" href="favorites.html"><span class="nav-fav-full">★ My Favorites</span><span class="nav-fav-short">★</span></a>
+      <a class="nav-link nav-link-primary" href="admin.html">Admin</a>
+    </div>
+  </div>
+</nav>
+
+<!-- HEADER -->
+<div class="hero" style="padding:32px 24px 28px;">
+  <p class="hero-eyebrow">Kitchen guidance</p>
+  <h1 style="margin-bottom:8px;">Articles</h1>
+  <p style="color:rgba(255,255,255,.55);font-size:0.9rem;margin:0;">Tips, techniques, and reference notes from the family kitchen</p>
+</div>
+
+<!-- GRID -->
+<main class="page" style="padding-top:32px;padding-bottom:64px;">
+  <div class="results-bar" id="results-bar"></div>
+  <div class="recipe-grid" id="article-grid">
+    <div class="loading-state">
+      <div class="spinner"></div>
+      <p>Loading articles…</p>
+    </div>
+  </div>
+</main>
+
+<!-- FOOTER -->
+<footer style="background:var(--white);border-top:1px solid var(--border);padding:28px 24px;text-align:center;color:var(--ink-faint);font-size:0.82rem;">
+  <p>The Johnson Cookbook &mdash; A family tradition. &nbsp;|&nbsp; <a href="admin.html">Add a recipe</a></p>
+</footer>
+
+<script src="config.js"></script>
+<script>
+// ============================================================
+//  ARTICLES LISTING — Parses the Articles sheet CSV
+// ============================================================
+
+function stripHtml(html) {
+  if (!html) return "";
+  return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+}
+function extractFirstImage(html) {
+  if (!html) return "";
+  const m = html.match(/<img[^>]+src=["']([^"']+)["']/i);
+  return m ? m[1] : "";
+}
+function authorName(raw) {
+  if (!raw) return "";
+  return raw.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+}
+function escHtml(s) {
+  return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+function isTruthy(v) { return String(v || "").trim().toLowerCase() === "true"; }
+
+// Smart crop for card cover images (mirrors index.html).
+function smartCrop(img) {
+  const wrap = img.closest(".card-image-wrap");
+  if (!wrap) return;
+  const iw = img.naturalWidth, ih = img.naturalHeight;
+  if (!iw || !ih) return;
+  const cw = wrap.clientWidth || wrap.offsetWidth || 1;
+  const ch = wrap.clientHeight || wrap.offsetHeight || 1;
+  img.style.objectPosition = (iw / ih) >= (cw / ch) ? "center center" : "center top";
+}
+
+function loadLocalAndRender() {
+  fetch("articles.csv")
+    .then(r => { if (!r.ok) throw new Error("articles.csv not found (HTTP " + r.status + ")"); return r.text(); })
+    .then(text => {
+      if (!text.trim()) throw new Error("articles.csv is empty");
+      Papa.parse(text, { header: true, complete: res => renderFromData(res.data) });
+    })
+    .catch(renderError);
+}
+
+function loadAndRender() {
+  if (!CONFIG.ARTICLES_CSV_URL || CONFIG.ARTICLES_CSV_URL.includes("YOUR_")) {
+    loadLocalAndRender();
+    return;
+  }
+  Papa.parse(CONFIG.ARTICLES_CSV_URL, {
+    download: true, header: true,
+    complete: res => {
+      const valid = (res.data || []).filter(r => r["Name"] && r["Name"].trim());
+      if (valid.length === 0) loadLocalAndRender(); else renderFromData(res.data);
+    },
+    error: () => loadLocalAndRender()
+  });
+}
+
+function renderError(err) {
+  document.getElementById("article-grid").innerHTML = `
+    <div class="empty-state">
+      <span class="emoji">⚙️</span>
+      <h3>Couldn't load articles</h3>
+      <p><strong>Error:</strong> ${escHtml(err && err.message || err || "Unknown error")}</p>
+    </div>`;
+}
+
+function parseArticles(rows) {
+  return rows
+    .filter(r => r["Name"] && r["Name"].trim() && !isTruthy(r["Archived"]) && !isTruthy(r["Draft"]))
+    .map(r => {
+      const body = (r["Body"] || "").trim();
+      return {
+        name:      (r["Name"] || "").trim(),
+        slug:      (r["Slug"] || "").trim(),
+        author:    (r["Author"] || "").trim(),
+        published: (r["Published On"] || "").trim(),
+        body,
+        image:     extractFirstImage(body),
+        preview:   stripHtml(body).slice(0, 160),
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function renderCard(a) {
+  const imageBlock = a.image ? `
+    <div class="card-image-wrap">
+      <img class="card-image" src="${escHtml(a.image)}" alt="${escHtml(a.name)}"
+           loading="lazy" onload="smartCrop(this)" onerror="this.parentElement.remove()">
+    </div>` : "";
+  return `
+    <a class="recipe-card${a.image ? "" : " no-image"}" href="article.html?id=${encodeURIComponent(a.slug)}">
+      ${imageBlock}
+      <div class="card-body">
+        <div class="card-title">${escHtml(a.name)}</div>
+        ${a.preview ? `<div class="card-desc">${escHtml(a.preview)}</div>` : ""}
+        ${a.author ? `<div class="card-meta"><span class="card-author">&mdash; ${escHtml(authorName(a.author))}</span></div>` : ""}
+      </div>
+    </a>`;
+}
+
+function renderFromData(rows) {
+  const articles = parseArticles(rows);
+  const grid = document.getElementById("article-grid");
+  const bar = document.getElementById("results-bar");
+
+  if (articles.length === 0) {
+    bar.textContent = "";
+    grid.innerHTML = `
+      <div class="empty-state">
+        <span class="emoji">📖</span>
+        <h3>No articles yet</h3>
+        <p>Check back soon.</p>
+      </div>`;
+    return;
+  }
+
+  bar.textContent = `${articles.length} article${articles.length !== 1 ? "s" : ""}`;
+  grid.innerHTML = articles.map(renderCard).join("");
+}
+
+loadAndRender();
+</script>
+</body>
+</html>
