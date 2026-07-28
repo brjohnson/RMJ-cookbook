@@ -9,6 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+  <script defer src="nav.js"></script>
   <!-- Quill rich text editor -->
   <link href="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.snow.min.css" rel="stylesheet">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.min.js"></script>
@@ -80,7 +81,10 @@
 <nav class="nav">
   <div class="nav-inner">
     <a class="nav-brand" href="/">🥘 The Johnson Cookbook</a>
-    <div class="nav-links">
+    <button class="nav-toggle" type="button" aria-label="Menu" aria-expanded="false" aria-controls="nav-links" onclick="toggleNav(this)">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+    <div class="nav-links" id="nav-links">
       <a class="nav-link" href="/">← All Recipes</a>
       <a class="nav-link" href="articles.html">Articles</a>
       <a class="nav-link nav-link-favorites" href="favorites.html"><span class="nav-fav-full">★ My Favorites</span><span class="nav-fav-short">★</span></a>
@@ -90,13 +94,10 @@
 
 <!-- MAIN -->
 <main class="page admin-page">
-  <h1 id="page-heading">Add a New Recipe</h1>
-  <p class="subtitle" id="page-subtitle">Share a family recipe by typing, scanning a photo, or describing it with your voice.</p>
-
-  <!-- Content-type toggle: Recipes vs Articles -->
-  <div class="mode-toggle-row content-type-toggle">
-    <button type="button" class="mode-btn active" id="ct-recipe-btn" onclick="switchContentType('recipe')">🥘 Recipes</button>
-    <button type="button" class="mode-btn" id="ct-article-btn" onclick="switchContentType('article')">📖 Articles</button>
+  <!-- Content-type tabs: Recipes vs Articles -->
+  <div class="content-tabs" role="tablist">
+    <button type="button" class="content-tab active" id="ct-recipe-btn" role="tab" onclick="switchContentType('recipe')">🥘 Recipes</button>
+    <button type="button" class="content-tab" id="ct-article-btn" role="tab" onclick="switchContentType('article')">📖 Articles</button>
   </div>
 
   <!-- ============ RECIPE PANEL ============ -->
@@ -1215,10 +1216,6 @@ function switchMode(mode) {
   document.getElementById("mode-edit-btn").classList.toggle("active", editMode);
   document.getElementById("edit-search-section").style.display = editMode ? "block" : "none";
   document.querySelector(".quick-add-section").style.display = editMode ? "none" : "";
-  document.getElementById("page-heading").textContent = editMode ? "Edit a Recipe" : "Add a New Recipe";
-  document.getElementById("page-subtitle").textContent = editMode
-    ? "Search for a recipe, make your changes, and save."
-    : "Share a family recipe by typing, scanning a photo, or describing it with your voice.";
   document.getElementById("submit-btn-label").textContent = editMode ? "Save Changes" : "Save Recipe";
   document.getElementById("submit-status").textContent = "";
 
@@ -1382,12 +1379,6 @@ function switchContentType(type) {
 
   if (isArticle) {
     switchArticleMode(articleEditMode ? "edit" : "add");
-  } else {
-    // Restore the recipe heading/subtitle for the current recipe mode
-    document.getElementById("page-heading").textContent = editMode ? "Edit a Recipe" : "Add a New Recipe";
-    document.getElementById("page-subtitle").textContent = editMode
-      ? "Search for a recipe, make your changes, and save."
-      : "Share a family recipe by typing, scanning a photo, or describing it with your voice.";
   }
 }
 
@@ -1397,10 +1388,6 @@ function switchArticleMode(mode) {
   document.getElementById("art-mode-add-btn").classList.toggle("active", !articleEditMode);
   document.getElementById("art-mode-edit-btn").classList.toggle("active", articleEditMode);
   document.getElementById("art-edit-search-section").style.display = articleEditMode ? "block" : "none";
-  document.getElementById("page-heading").textContent = articleEditMode ? "Edit an Article" : "Add a New Article";
-  document.getElementById("page-subtitle").textContent = articleEditMode
-    ? "Search for an article, make your changes, and save."
-    : "Write a guidance piece — a tip, technique, or reference note.";
   document.getElementById("art-submit-btn-label").textContent = articleEditMode ? "Save Changes" : "Save Article";
   document.getElementById("art-submit-status").textContent = "";
 

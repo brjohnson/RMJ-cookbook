@@ -96,6 +96,7 @@ p { color: var(--ink-light); }
 }
 .nav-link-primary:hover { background: var(--accent-dark); text-decoration: none; }
 .nav-fav-short { display: none; }
+.nav-toggle { display: none; }   /* hamburger — shown on mobile only */
 
 /* ---------- Page container ---------- */
 .page { max-width: var(--max-width); margin: 0 auto; padding: 0 24px; }
@@ -901,6 +902,31 @@ mark.search-hl {
 .mode-btn + .mode-btn { border-left: 1px solid var(--border-dark); }
 .mode-btn.active { background: var(--ink); color: var(--white); }
 
+/* Top-level content-type tabs (admin: Recipes vs Articles).
+   Styled distinctly from the dark Add/Edit pill so the hierarchy is clear —
+   these tabs pick WHAT you're managing; the pill below picks add vs edit. */
+.content-tabs {
+  display: flex;
+  gap: 28px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 28px;
+}
+.content-tab {
+  padding: 6px 2px 10px;
+  margin-bottom: -1px;               /* sit the underline on the divider */
+  font-size: 0.98rem;
+  font-weight: 600;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  color: var(--ink-faint);
+  font-family: var(--font);
+  transition: color .12s, border-color .12s;
+}
+.content-tab:hover { color: var(--ink-light); }
+.content-tab.active { color: var(--ink); border-bottom-color: var(--accent); }
+
 /* Edit recipe search */
 .edit-search-section { margin-bottom: 24px; }
 .edit-search-input {
@@ -1295,9 +1321,47 @@ textarea { resize: vertical; min-height: 120px; }
   .recipe-sidebar { position: static; }
   .form-row { grid-template-columns: 1fr; }
   .quick-add-grid { grid-template-columns: 1fr; }
-  .nav-links .nav-link:not(.nav-link-primary):not(.nav-link-favorites) { display: none; }
-  .nav-fav-full { display: none; }
-  .nav-fav-short { display: inline; }
+  /* Mobile nav → hamburger dropdown (anchored to the sticky .nav bar) */
+  .nav-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px;
+    margin: -8px -8px -8px 0;
+    background: none;
+    border: none;
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .nav-links {
+    display: none;
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 16px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    min-width: 220px;
+    padding: 8px;
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(0,0,0,.14);
+    z-index: 200;
+  }
+  .nav-links.open { display: flex; }
+  .nav-links .nav-link,
+  .nav-links .nav-link-primary {
+    display: block;
+    width: 100%;
+    padding: 11px 14px;
+    font-size: 0.95rem;
+    border-radius: 6px;
+    text-align: left;
+  }
+  /* Dropdown shows the full favorites label, not the compact star */
+  .nav-fav-full { display: inline; }
+  .nav-fav-short { display: none; }
   /* Admin: reduce section padding on mobile */
   .form-section { padding: 18px 16px; }
   .admin-page { padding-top: 24px; padding-bottom: 48px; }
