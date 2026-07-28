@@ -840,6 +840,17 @@ mark.search-hl {
   margin: 22px 0 8px;
 }
 .instructions-block img { max-width: 100%; display: block; margin: 14px 0; border-radius: 6px; }
+/* Embedded videos (Quill inserts <iframe class="ql-video">) — responsive 16:9 */
+.instructions-block iframe,
+.ql-editor iframe.ql-video {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  height: auto;
+  border: 0;
+  border-radius: 8px;
+  margin: 18px 0;
+}
 .instructions-block figure { margin: 18px 0; }
 .instructions-block figcaption { font-size: 0.78rem; color: var(--ink-faint); margin-top: 6px; }
 .instructions-block strong, .instructions-block em { color: var(--ink); }

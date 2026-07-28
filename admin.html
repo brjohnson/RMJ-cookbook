@@ -934,7 +934,7 @@ function parseVoiceTranscript() {
 const QUILL_TOOLBAR = [
   ["bold", "italic"],
   [{ list: "ordered" }, { list: "bullet" }],
-  ["link"],
+  ["link", "video"],
   ["clean"]
 ];
 const quillIngredients = new Quill("#f-ingredients", {
@@ -1357,7 +1357,7 @@ const quillArticleBody = new Quill("#fa-body", {
     [{ header: [2, 3, 4, false] }],
     ["bold", "italic"],
     [{ list: "ordered" }, { list: "bullet" }],
-    ["link"],
+    ["link", "video"],
     ["clean"]
   ] }
 });
