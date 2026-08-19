@@ -167,27 +167,6 @@ function scaleQuantityText(text, factor) {
 // Extract slug from URL
 const urlId = new URLSearchParams(window.location.search).get("id") || "";
 
-// Parse HTML ingredients into a clean list
-function parseIngredientsList(html) {
-  if (!html) return [];
-  // Get all text from <li>, <p>, <h3-5> elements
-  const items = [];
-  const tmp = document.createElement("div");
-  tmp.innerHTML = html;
-  // Try list items first
-  const lis = tmp.querySelectorAll("li");
-  if (lis.length > 0) {
-    lis.forEach(li => { const t = li.textContent.trim(); if (t) items.push(t); });
-  } else {
-    // Fall back to paragraphs
-    tmp.querySelectorAll("p, h3, h4, h5").forEach(el => {
-      const t = el.textContent.trim();
-      if (t && t.length > 1) items.push(t);
-    });
-  }
-  return items;
-}
-
 // Parse related recipe slugs
 function parseRelated(str) {
   if (!str) return [];
@@ -269,8 +248,10 @@ function renderFromData(rows) {
   const relatedSlugs = parseRelated(recipe.related);
   const relatedRecipes = relatedSlugs.map(s => all.find(r => r.slug === s)).filter(Boolean);
 
-  // Ingredient items
-  const ingItems = parseIngredientsList(recipe.ingredients);
+  // Ingredients are rendered as their original HTML (preserving section
+  // headers, sub-lists, notes, and links). scaleIngredients() below rescales
+  // the amounts in place.
+  const hasIngredients = !!(recipe.ingredients && recipe.ingredients.trim());
 
   // Format date
   let pubDate = "";
@@ -328,21 +309,19 @@ function renderFromData(rows) {
           <div class="section-header">
             <span>🧂 Ingredients</span>
             <div class="section-header-actions">
-              ${ingItems.length > 0 ? `
+              ${hasIngredients ? `
               <select class="ing-scaler-select" id="ing-scale-select" onchange="scaleIngredients(this.value)" aria-label="Scale ingredient amounts" title="Scale ingredient amounts">
                 <option value="0.25">¼×</option>
                 <option value="0.5">½×</option>
                 <option value="1" selected>1×</option>
                 <option value="2">2×</option>
-              </select>` : ""}
+              </select>
               <button class="copy-ing-btn" id="copy-ing-btn" onclick="copyIngredients()" title="Copy ingredients">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-              </button>
+              </button>` : ""}
             </div>
           </div>
-          ${ingItems.length > 0
-            ? `<ul class="ingredients-list" id="ingredients-list">${ingItems.map(i=>`<li>${escHtml(i)}</li>`).join("")}</ul>`
-            : `<div class="instructions-block">${recipe.ingredients || "<p>See instructions.</p>"}</div>`}
+          <div class="ingredients-block" id="ingredients-list">${recipe.ingredients || "<p>See instructions.</p>"}</div>
         </aside>
 
         <!-- MAIN: Instructions + Notes -->
@@ -384,20 +363,30 @@ function renderFromData(rows) {
     </div>` : ""}
   `;
 
-  // Rescale ingredient amounts (and the yield) in place.
+  // Rescale ingredient amounts (and the yield) in place. Re-renders the
+  // original HTML, then scales the quantities in each text node so section
+  // headers, sub-lists, and notes are preserved.
   window.scaleIngredients = function(factor) {
     factor = Number(factor) || 1;
-    const ul = document.getElementById("ingredients-list");
-    if (ul) ul.innerHTML = ingItems.map(i => `<li>${escHtml(scaleQuantityText(i, factor))}</li>`).join("");
+    const box = document.getElementById("ingredients-list");
+    if (box) {
+      box.innerHTML = recipe.ingredients || "<p>See instructions.</p>";
+      if (factor !== 1) {
+        const walker = document.createTreeWalker(box, NodeFilter.SHOW_TEXT);
+        const nodes = [];
+        while (walker.nextNode()) nodes.push(walker.currentNode);
+        nodes.forEach(n => { n.nodeValue = scaleQuantityText(n.nodeValue, factor); });
+      }
+    }
     const yv = document.getElementById("yield-value");
     if (yv && recipe.quantity) yv.textContent = scaleQuantityText(recipe.quantity, factor);
   };
 
   // Copy ingredients to clipboard (respects the current scale).
   window.copyIngredients = function() {
-    const ul = document.getElementById("ingredients-list");
-    const text = ul
-      ? [...ul.querySelectorAll("li")].map(li => li.textContent.trim()).filter(Boolean).join("\n")
+    const box = document.getElementById("ingredients-list");
+    const text = box
+      ? box.innerText.replace(/\n{2,}/g, "\n").trim()
       : recipe.ingredients.replace(/<[^>]+>/g, "").trim();
     navigator.clipboard.writeText(text).then(() => {
       const btn = document.getElementById("copy-ing-btn");

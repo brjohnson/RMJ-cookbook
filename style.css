@@ -827,6 +827,29 @@ mark.search-hl {
   color: var(--ink-light);
   line-height: 1.5;
 }
+
+/* Ingredient body — rendered from the recipe's HTML so section headers,
+   sub-lists, notes, and links are preserved (not flattened to plain text). */
+.ingredients-block { font-size: 0.88rem; color: var(--ink-light); line-height: 1.5; }
+.ingredients-block ul, .ingredients-block ol { list-style: none; padding-left: 0; margin: 0; }
+.ingredients-block li,
+.ingredients-block > p {
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+}
+.ingredients-block h1, .ingredients-block h2, .ingredients-block h3,
+.ingredients-block h4, .ingredients-block h5, .ingredients-block h6 {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color: var(--ink);
+  margin: 18px 0 4px;
+}
+.ingredients-block > *:first-child { margin-top: 0; }
+.ingredients-block em { color: var(--ink-faint); }
+.ingredients-block a { color: var(--accent-dark); text-decoration: underline; }
+.ingredients-block img { max-width: 100%; display: block; margin: 10px 0; border-radius: 6px; }
 .instructions-block { line-height: 1.85; color: var(--ink-light); font-size: 0.95rem; }
 .instructions-block p { margin-bottom: 14px; }
 .instructions-block ul, .instructions-block ol { padding-left: 22px; margin-bottom: 14px; }
