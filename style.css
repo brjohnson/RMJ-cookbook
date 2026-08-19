@@ -96,7 +96,8 @@ p { color: var(--ink-light); }
 }
 .nav-link-primary:hover { background: var(--accent-dark); text-decoration: none; }
 .nav-fav-short { display: none; }
-.nav-toggle { display: none; }   /* hamburger — shown on mobile only */
+.nav-toggle { display: none; }        /* hamburger — shown on mobile only */
+.nav-fav-mobile { display: none; }    /* top-bar star — shown on mobile only */
 
 /* ---------- Page container ---------- */
 .page { max-width: var(--max-width); margin: 0 auto; padding: 0 24px; }
@@ -1162,6 +1163,21 @@ label { font-size: 0.78rem; font-weight: 500; color: var(--ink); letter-spacing:
 .admin-cat-pill:hover { border-color: var(--accent); color: var(--accent-dark); background: var(--accent-soft); }
 .admin-cat-pill.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 
+/* "+ New" pill and the inline input it swaps to — dashed so it reads as an
+   action rather than another selectable value. */
+.admin-cat-pill-add {
+  border-style: dashed;
+  color: var(--ink-faint);
+}
+.admin-cat-pill-add:hover { border-style: dashed; }
+input[type="text"].admin-cat-pill-input {
+  width: auto;
+  padding: 4px 12px;
+  border-radius: 99px;
+  border: 1px dashed var(--accent);
+  font-size: 0.78rem;
+}
+
 /* Admin related-recipes multi-select dropdown */
 .related-dropdown-wrap { position: relative; }
 .related-dropdown-btn {
@@ -1393,9 +1409,27 @@ textarea { resize: vertical; min-height: 120px; }
     border-radius: 6px;
     text-align: left;
   }
+  /* Favorites sits in the top bar itself, so it's one tap from any page
+     instead of being buried behind the hamburger. margin-left:auto absorbs
+     the .nav-inner space-between, grouping the star with the hamburger. */
+  .nav-fav-mobile {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: auto;
+    padding: 8px;
+    font-size: 1.25rem;
+    line-height: 1;
+    color: var(--ink-light);
+    text-decoration: none;
+  }
+  .nav-fav-mobile:hover { text-decoration: none; }
+  .nav-fav-mobile.active { color: var(--accent); }
   /* Dropdown shows the full favorites label, not the compact star */
   .nav-fav-full { display: inline; }
   .nav-fav-short { display: none; }
+  /* …and doesn't repeat what's already pinned in the top bar */
+  .nav-links .nav-link-favorites { display: none; }
   /* Admin: reduce section padding on mobile */
   .form-section { padding: 18px 16px; }
   .admin-page { padding-top: 24px; padding-bottom: 48px; }
