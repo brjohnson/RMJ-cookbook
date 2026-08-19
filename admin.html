@@ -191,7 +191,17 @@
         </div>
         <div class="form-group">
           <label for="f-author">Added By</label>
-          <input type="text" id="f-author" name="author" placeholder="e.g. Monique Johnson">
+          <select id="f-author" name="author">
+            <option value="">— Select —</option>
+            <option value="barrett-johnson">Barrett Johnson</option>
+            <option value="calvin-johnson">Calvin Johnson</option>
+            <option value="grant-johnson">Grant Johnson</option>
+            <option value="marcela-laverde-johnson">Marcela Laverde-Johnson</option>
+            <option value="monique-johnson">Monique Johnson</option>
+            <option value="naomi-feldman">Naomi Feldman</option>
+            <option value="nina-libby">Nina Libby</option>
+            <option value="russ-johnson">Russ Johnson</option>
+          </select>
         </div>
       </div>
       <div class="form-row">
@@ -315,10 +325,9 @@
           <p class="form-hint">Select all recipes that pair well with this one.</p>
         </div>
         <div class="form-group">
-          <label for="f-principal-ingredients">Principal Ingredients</label>
-          <input type="text" id="f-principal-ingredients" name="principal-ingredients"
-                 placeholder="e.g. chicken; garlic; lemon">
-          <p class="form-hint">Semicolon-separated. Used for ingredient filtering on the site.</p>
+          <label>Principal Ingredients <span style="font-weight:400;color:var(--ink-faint);font-size:0.8rem;">(select all that apply)</span></label>
+          <div class="admin-cat-pills" id="f-ingredient-pills"></div>
+          <p class="form-hint">Used for ingredient filtering on the site.</p>
         </div>
       </div>
     </div>
@@ -571,13 +580,17 @@ function populateFromSchema(r, sourceUrl) {
     set("f-image", url);
   }
 
-  // Author (don't overwrite if user already filled in)
+  // Author — "Added By" is whoever in the family added the recipe, not the
+  // source site's byline. Only adopt an imported name if it happens to match
+  // someone already in the list; otherwise leave the select for the user.
   const auth = r.author;
   if (auth) {
     const name = typeof auth === "string" ? auth
       : Array.isArray(auth) ? (auth[0]?.name || auth[0] || "")
       : auth.name || "";
-    set("f-author", stripHtmlTags(String(name)));
+    const slug = stripHtmlTags(String(name)).trim().toLowerCase().replace(/\s+/g, "-");
+    const sel = document.getElementById("f-author");
+    if (slug && !sel.value && [...sel.options].some(o => o.value === slug)) sel.value = slug;
   }
 
   // Ingredients
@@ -966,13 +979,75 @@ function quillIsEmpty(editor) {
   return editor.getText().trim().length === 0;
 }
 
-// ---- Category pill toggle ----
-document.querySelectorAll(".admin-cat-pill").forEach(btn => {
-  btn.addEventListener("click", () => btn.classList.toggle("active"));
+// ---- Pill toggle (categories + principal ingredients) ----
+// Delegated so dynamically rendered pills work without re-binding.
+document.addEventListener("click", e => {
+  const btn = e.target.closest(".admin-cat-pill");
+  if (btn) btn.classList.toggle("active");
 });
 
 function clearCategoryPills() {
   document.querySelectorAll(".admin-cat-pill").forEach(b => b.classList.remove("active"));
+}
+
+// ---- Principal ingredients multi-select ----
+// Slugs only — labels are derived with the same transform index.html uses for
+// its ingredient filter panel, so admin and the public site always agree.
+const PRINCIPAL_INGREDIENTS = [
+  "anchovies-sardines", "apples-pears", "avocado", "beef",
+  "broccoli-cauliflower-brussel-sprouts", "chicken", "crab",
+  "cranberries-strawberries-blueberries-raspberries", "eggplant-zucchini",
+  "halibut-cod-bass", "lamb", "lemons-limes-oranges", "lobster", "mushrooms",
+  "mussels", "noodles-pasta", "onions-shallots-leek", "other-vegetables",
+  "pork", "potato", "poultry-other-than-chicken", "rice", "salmon", "salt-cod",
+  "shellfish", "shrimp", "squid-octopus", "swordfish", "tomatoes", "tuna", "veal"
+];
+
+const ingLabel = i => i.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+
+(function renderIngredientPills() {
+  const box = document.getElementById("f-ingredient-pills");
+  if (!box) return;
+  box.innerHTML = PRINCIPAL_INGREDIENTS
+    .slice()
+    .sort((a, b) => ingLabel(a).localeCompare(ingLabel(b)))
+    .map(slug => `<button type="button" class="admin-cat-pill" data-value="${escHtml(slug)}">${escHtml(ingLabel(slug))}</button>`)
+    .join("");
+})();
+
+function getSelectedIngredients() {
+  return [...document.querySelectorAll("#f-ingredient-pills .admin-cat-pill.active")]
+    .map(b => b.dataset.value);
+}
+
+// Activate the pills matching a semicolon-separated slug string. Slugs retired
+// from PRINCIPAL_INGREDIENTS (e.g. the old "squid") get a pill appended so an
+// existing recipe never silently loses its value on edit.
+function setSelectedIngredients(str) {
+  const want = new Set(String(str || "").split(";").map(s => s.trim()).filter(Boolean));
+  const box = document.getElementById("f-ingredient-pills");
+  const known = new Set([...box.querySelectorAll(".admin-cat-pill")].map(b => b.dataset.value));
+  want.forEach(slug => {
+    if (known.has(slug)) return;
+    box.insertAdjacentHTML("beforeend",
+      `<button type="button" class="admin-cat-pill" data-value="${escHtml(slug)}">${escHtml(ingLabel(slug))}</button>`);
+  });
+  box.querySelectorAll(".admin-cat-pill").forEach(b => {
+    b.classList.toggle("active", want.has(b.dataset.value));
+  });
+}
+
+// ---- Author select ----
+// Adds an option for any slug not already listed, so legacy or one-off authors
+// survive a round-trip through the edit form.
+function setAuthorSlug(slug) {
+  const sel = document.getElementById("f-author");
+  slug = String(slug || "").trim();
+  if (slug && ![...sel.options].some(o => o.value === slug)) {
+    sel.insertAdjacentHTML("beforeend",
+      `<option value="${escHtml(slug)}">${escHtml(slugToDisplayName(slug))}</option>`);
+  }
+  sel.value = slug;
 }
 
 // ---- Related recipes multi-select ----
@@ -1118,15 +1193,15 @@ function collectFormData() {
     originalSlug:       editSlug || "",
     Name:               name,
     Slug:               slug,
-    Author:             document.getElementById("f-author").value.trim().toLowerCase().replace(/\s+/g,"-"),
+    Author:             document.getElementById("f-author").value,
     Quantity:           document.getElementById("f-quantity").value.trim(),
     "Brief description": document.getElementById("f-description").value.trim(),
-    Category:           [...document.querySelectorAll(".admin-cat-pill.active")].map(b=>b.dataset.value).join(";"),
+    Category:           [...document.querySelectorAll("#f-category-pills .admin-cat-pill.active")].map(b=>b.dataset.value).join(";"),
     "Main image":        document.getElementById("f-image").value.trim(),
     Ingredients:        quillGetHtml(quillIngredients),
     Instructions:       quillGetHtml(quillInstructions),
     "Related recipes":       [...selectedRelated].join(";"),
-    "Principal ingredients": document.getElementById("f-principal-ingredients").value.trim(),
+    "Principal ingredients": getSelectedIngredients().join(";"),
     "Chef's notes":          plainToHtml(document.getElementById("f-notes").value),
     "Created On":       new Date().toUTCString(),
     Draft:              "false",
@@ -1159,6 +1234,9 @@ function downloadAsCSV() {
 function clearForm() {
   if (!confirm("Clear all fields?")) return;
   document.getElementById("recipe-form").reset();
+  // Pills and the related-recipe panel aren't form controls, so reset() misses them.
+  clearCategoryPills();
+  clearRelated();
   document.getElementById("photo-preview").style.display = "none";
   document.getElementById("ocr-preview").style.display = "none";
   document.getElementById("voice-transcript").style.display = "none";
@@ -1273,19 +1351,19 @@ function selectRecipeForEdit(index) {
 
   // Pre-fill all form fields
   document.getElementById("f-name").value        = r["Name"]?.trim() || "";
-  document.getElementById("f-author").value      = slugToDisplayName(r["Author"]?.trim());
+  setAuthorSlug(r["Author"]?.trim());
   document.getElementById("f-quantity").value    = r["Quantity"]?.trim() || "";
   document.getElementById("f-description").value = r["Brief description"]?.trim() || "";
   document.getElementById("f-image").value       = r["Main image"]?.trim() || "";
   setSelectedRelated((r["Related recipes"]||"").split(";").map(s=>s.trim()).filter(Boolean));
-  document.getElementById("f-principal-ingredients").value = (r["Principal ingredients"]||"").trim();
+  setSelectedIngredients(r["Principal ingredients"]||"");
   quillSetHtml(quillIngredients, r["Ingredients"]||"");
   quillSetHtml(quillInstructions, r["Instructions"]||"");
   document.getElementById("f-notes").value       = htmlToPlain(r["Chef's notes"]||"");
 
   // Category pills — activate all matching slugs
   const catSlugs = new Set((r["Category"]||"").split(";").map(s=>s.trim()).filter(Boolean));
-  document.querySelectorAll(".admin-cat-pill").forEach(btn => {
+  document.querySelectorAll("#f-category-pills .admin-cat-pill").forEach(btn => {
     btn.classList.toggle("active", catSlugs.has(btn.dataset.value));
   });
 
