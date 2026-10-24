@@ -794,6 +794,8 @@ mark.search-hl {
 .btn-primary:hover { background: var(--accent-dark); text-decoration: none; color: var(--white); }
 .btn-outline { background: transparent; color: var(--ink-light); border-color: var(--border-dark); }
 .btn-outline:hover { background: var(--accent-soft); color: var(--accent-dark); text-decoration: none; border-color: var(--accent); }
+.btn-danger { background: transparent; color: #c0392b; border-color: #c0392b; }
+.btn-danger:hover { background: #c0392b; color: var(--white); text-decoration: none; }
 .btn-fav { background: transparent; color: var(--ink-faint); border-color: var(--border-dark); }
 .btn-fav.active { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
 .btn-fav:hover { text-decoration: none; }
