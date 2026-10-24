@@ -37,6 +37,8 @@ Go to `/admin.html`. There are two modes:
 
 **Edit** — search for an existing recipe, click it to pre-fill the form, make changes, and save. The Apps Script finds the row by its slug and updates it in place. The original publish date is preserved so edited recipes don't resurface in "Recently Added."
 
+**Delete** - in Edit mode, select the recipe and click **Delete Recipe** at the bottom of the form. After you confirm, the Apps Script removes the row from the sheet and the recipe disappears from the site within a few minutes. This can't be undone - set Draft to `true` instead if you only want to hide a recipe.
+
 If you're logged into the admin page, an **Edit recipe** link also appears on individual recipe pages — it opens `admin.html?edit=slug` and pre-fills the form automatically.
 
 You can also edit the Google Sheet directly — just be careful not to change the Slug column on an existing recipe, as that's how the site identifies it.

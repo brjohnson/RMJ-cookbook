@@ -349,6 +349,7 @@
           💾 <span id="submit-btn-label">Save Recipe</span>
         </button>
         <button type="button" class="btn btn-outline" onclick="clearForm()">🗑 Clear Form</button>
+        <button type="button" class="btn btn-danger" id="delete-btn" style="display:none" onclick="deleteRecipe()">✖ Delete Recipe</button>
         <span class="submit-status" id="submit-status"></span>
       </div>
     </div>
@@ -1280,6 +1281,45 @@ function submitForm(e) {
   });
 }
 
+function deleteRecipe() {
+  if (!editMode || !editSlug) return;
+  const name = document.getElementById("f-name").value.trim() || editSlug;
+  const status = document.getElementById("submit-status");
+  const btn = document.getElementById("delete-btn");
+
+  if (!confirm(`Delete "${name}" from the cookbook?\n\nThis removes the recipe's row from the Google Sheet, so it disappears from the site within a few minutes. This can't be undone - to just hide a recipe instead, set Draft to true on it.`)) return;
+
+  if (!CONFIG.APPS_SCRIPT_URL || CONFIG.APPS_SCRIPT_URL.includes("YOUR_")) {
+    status.className = "submit-status error";
+    status.textContent = "No Apps Script URL configured - can't delete.";
+    return;
+  }
+
+  btn.disabled = true;
+  status.className = "submit-status";
+  status.textContent = "Deleting…";
+
+  fetch(CONFIG.APPS_SCRIPT_URL, {
+    method: "POST",
+    mode: "no-cors",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "delete", originalSlug: editSlug, Slug: editSlug, Name: name }),
+  })
+  .then(() => {
+    // Drop it from the local cache so it stops appearing in edit search.
+    if (allRecipesCache) allRecipesCache = allRecipesCache.filter(r => (r["Slug"] || "").trim() !== editSlug);
+    clearEditSelection();
+    status.className = "submit-status success";
+    status.textContent = `✅ "${name}" deleted. It will disappear from the cookbook after the sheet refreshes.`;
+    btn.disabled = false;
+  })
+  .catch(err => {
+    status.className = "submit-status error";
+    status.textContent = "❌ Error: " + err.message;
+    btn.disabled = false;
+  });
+}
+
 function collectFormData() {
   const name = document.getElementById("f-name").value.trim();
   const slug = editSlug || name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -1391,6 +1431,8 @@ function switchMode(mode) {
   document.getElementById("submit-btn-label").textContent = editMode ? "Save Changes" : "Save Recipe";
   document.getElementById("submit-status").textContent = "";
 
+  document.getElementById("delete-btn").style.display = "none";
+
   if (editMode) {
     if (!allRecipesCache) loadRecipesForSearch();
     // Clear form fields cleanly without the confirm prompt
@@ -1461,9 +1503,10 @@ function selectRecipeForEdit(index) {
     btn.classList.toggle("active", catSlugs.has(btn.dataset.value));
   });
 
-  // Show selected banner, hide results
+  // Show selected banner + delete option, hide results
   document.getElementById("edit-selected-name").textContent = r["Name"];
   document.getElementById("edit-selected-banner").style.display = "flex";
+  document.getElementById("delete-btn").style.display = "";
   document.getElementById("edit-results").innerHTML = "";
   document.getElementById("edit-search-input").value = "";
 
@@ -1473,6 +1516,7 @@ function selectRecipeForEdit(index) {
 
 function clearEditSelection() {
   editSlug = null;
+  document.getElementById("delete-btn").style.display = "none";
   document.getElementById("edit-selected-banner").style.display = "none";
   document.getElementById("edit-selected-name").textContent = "";
   document.getElementById("edit-results").innerHTML = "";
