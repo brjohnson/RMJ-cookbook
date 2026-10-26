@@ -39,7 +39,7 @@
   <div style="font-size:0.7rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#999;margin-bottom:4px;">The Johnson Cookbook</div>
   <h2 style="font-size:1.2rem;font-weight:600;color:#111;margin-bottom:8px;">Admin access</h2>
   <form onsubmit="checkPassword(event)" style="display:flex;flex-direction:column;gap:10px;width:100%;max-width:280px;">
-    <input id="pw-input" type="password" placeholder="Admin key" autocomplete="current-password"
+    <input id="pw-input" type="password" placeholder="Family password" autocomplete="current-password"
       style="padding:10px 14px;border:1px solid #bfbfbf;border-radius:4px;font-size:0.95rem;font-family:inherit;outline:none;width:100%;">
     <button type="submit"
       style="padding:10px;background:#111;color:#fff;border:none;border-radius:4px;font-size:0.88rem;font-weight:600;cursor:pointer;font-family:inherit;">
@@ -50,30 +50,70 @@
 </div>
 
 <script>
-const ADMIN_KEY_STORAGE = "jcb_admin_key";
-// Asks the save service whether this key is right. Returns "ok", "unauthorized" or "unreachable".
-async function verifyAdminKey(key) {
-  if (!key) return "unauthorized";
+const TOKEN_STORAGE = "jcb_admin_token"; // a signed sign-in token; the password itself is never stored
+async function authCall(body) {
   try {
-    const res = await fetch(CONFIG.APPS_SCRIPT_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action: "auth", key }) });
+    const res = await fetch(CONFIG.APPS_SCRIPT_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(body) });
     const out = await res.json();
-    if (out && out.status === "ok") return "ok";
-    return out && out.message === "unauthorized" ? "unauthorized" : "unreachable";
-  } catch (_) { return "unreachable"; }
+    if (out && out.status === "ok" && typeof out.token === "string") return { kind: "ok", token: out.token };
+    return { kind: out && out.message === "unauthorized" ? "unauthorized" : "unreachable" };
+  } catch (_) { return { kind: "unreachable" }; }
+}
+// Checks the password with the save service. On success keeps only the returned token.
+async function loginWithPassword(password) {
+  if (!password) return "unauthorized";
+  const r = await authCall({ action: "login", password });
+  if (r.kind === "ok") localStorage.setItem(TOKEN_STORAGE, r.token);
+  return r.kind;
+}
+// Swaps the stored token for a fresh one (keeps active browsers signed in).
+async function refreshSession() {
+  const t = localStorage.getItem(TOKEN_STORAGE);
+  if (!t) return "unauthorized";
+  const r = await authCall({ action: "refresh", token: t });
+  if (r.kind === "ok") localStorage.setItem(TOKEN_STORAGE, r.token);
+  if (r.kind === "unauthorized") localStorage.removeItem(TOKEN_STORAGE);
+  return r.kind;
+}
+// Small password box shown on top of the page, so an open form is never lost. Resolves to the text or "".
+function askFamilyPassword(message) {
+  return new Promise(resolve => {
+    const wrap = document.createElement("div");
+    wrap.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px;";
+    wrap.innerHTML = '<form style="background:#fff;border-radius:8px;padding:20px;max-width:340px;width:100%;display:flex;flex-direction:column;gap:10px;font-family:inherit;">' +
+      '<div id="fp-msg" style="font-size:.9rem;color:#111;"></div>' +
+      '<input id="fp-input" type="password" autocomplete="current-password" placeholder="Family password" style="padding:10px 12px;border:1px solid #bfbfbf;border-radius:4px;font-size:.95rem;font-family:inherit;">' +
+      '<div style="display:flex;gap:8px;justify-content:flex-end;"><button type="button" id="fp-cancel" style="padding:8px 14px;border:1px solid #bfbfbf;background:#fff;border-radius:4px;cursor:pointer;font-family:inherit;">Cancel</button>' +
+      '<button type="submit" style="padding:8px 14px;border:none;background:#111;color:#fff;border-radius:4px;cursor:pointer;font-weight:600;font-family:inherit;">Continue</button></div></form>';
+    wrap.querySelector("#fp-msg").textContent = message;
+    const done = v => { wrap.remove(); resolve(v); };
+    wrap.querySelector("form").addEventListener("submit", e => { e.preventDefault(); done(wrap.querySelector("#fp-input").value.trim()); });
+    wrap.querySelector("#fp-cancel").addEventListener("click", () => done(""));
+    document.body.appendChild(wrap);
+    wrap.querySelector("#fp-input").focus();
+  });
+}
+// Makes sure a token is stored; asks for the family password once if not. Returns the token or "".
+async function ensureSignedIn(message) {
+  let t = localStorage.getItem(TOKEN_STORAGE);
+  if (t) return t;
+  const pw = await askFamilyPassword(message || "Enter the family password to continue (asked once per browser).");
+  if (!pw) return "";
+  const r = await loginWithPassword(pw);
+  if (r === "ok") return localStorage.getItem(TOKEN_STORAGE);
+  throw new Error(r === "unauthorized" ? "That password wasn't accepted." : "Couldn't reach the save service to check the password. Try again.");
 }
 (function() {
   const SESSION_KEY = "jcb_admin_ok";
   const gate = document.getElementById("pw-gate");
 
-  // Already signed in on this browser (the key is checked by the save service on every save)
-  if (localStorage.getItem(ADMIN_KEY_STORAGE) && sessionStorage.getItem(SESSION_KEY) === "1") {
-    gate.style.display = "none";
-    return;
-  }
-  if (localStorage.getItem(ADMIN_KEY_STORAGE) && !sessionStorage.getItem(SESSION_KEY)) {
-    // New tab/session on a browser that has a saved key: re-verify it quietly.
-    verifyAdminKey(localStorage.getItem(ADMIN_KEY_STORAGE)).then(r => {
-      if (r === "ok") { sessionStorage.setItem(SESSION_KEY, "1"); gate.style.display = "none"; document.body.style.overflow = ""; }
+  // Signed in on this browser already: renew the token quietly and let them in.
+  if (localStorage.getItem(TOKEN_STORAGE)) {
+    if (sessionStorage.getItem(SESSION_KEY) === "1") { gate.style.display = "none"; return; }
+    refreshSession().then(r => {
+      if (r === "ok" || r === "unreachable") { // offline blips shouldn't lock anyone out; saves still check the token
+        sessionStorage.setItem(SESSION_KEY, "1"); gate.style.display = "none"; document.body.style.overflow = "";
+      }
     });
   }
 
@@ -87,15 +127,14 @@ async function verifyAdminKey(key) {
     const val = document.getElementById("pw-input").value.trim();
     const err = document.getElementById("pw-error");
     err.textContent = "Checking…";
-    const r = await verifyAdminKey(val);
+    const r = await loginWithPassword(val);
     if (r === "ok") {
-      localStorage.setItem(ADMIN_KEY_STORAGE, val);
       sessionStorage.setItem(SESSION_KEY, "1");
       err.textContent = "";
       gate.style.display = "none";
       document.body.style.overflow = "";
     } else {
-      err.textContent = r === "unauthorized" ? "That key wasn't accepted." : "Couldn't reach the save service to check the key. Try again.";
+      err.textContent = r === "unauthorized" ? "That password wasn't accepted." : "Couldn't reach the save service to check the password. Try again.";
       document.getElementById("pw-input").value = "";
       document.getElementById("pw-input").focus();
     }
@@ -736,7 +775,6 @@ function stripHtmlTags(s) {
 const PHOTO_MAX_INPUT_BYTES = 15 * 1024 * 1024;   // largest original we will try to decode
 const PHOTO_MAX_UPLOAD_BYTES = 500 * 1024;          // after resizing; the worker enforces 600 KB
 const PHOTO_MAX_SIDE = 1200;
-const PHOTO_KEY_STORAGE = ADMIN_KEY_STORAGE; // one admin key covers saves and photo uploads
 let photoUploading = false;
 
 function photoUploadEndpoint() {
@@ -803,21 +841,23 @@ async function handlePhotoUpload(e) {
     prev.dataset.blobUrl = URL.createObjectURL(blob);
     prev.src = prev.dataset.blobUrl;
     prev.style.display = "block";
-    let key = localStorage.getItem(PHOTO_KEY_STORAGE);
-    if (!key) {
-      key = (prompt("Enter the admin key (asked once per browser). It is not stored on the website.") || "").trim();
-      if (!key) throw new Error("Upload cancelled - no key entered. The preview above was not uploaded.");
-    }
+    let token = await ensureSignedIn("Enter the family password to upload photos (asked once per browser).");
+    if (!token) throw new Error("Upload cancelled - not signed in. The preview above was not uploaded.");
     setPhotoStatus("", "Uploading photo…");
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 30000);
-    let res;
-    try {
-      res = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "image/jpeg", "Authorization": "Bearer " + key }, body: blob, signal: controller.signal });
-    } finally { clearTimeout(timer); }
-    if (res.status === 401) {
-      localStorage.removeItem(PHOTO_KEY_STORAGE);
-      throw new Error("That admin key wasn't accepted by the photo service. Pick the photo again to re-enter it.");
+    const send = async tok => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 30000);
+      try {
+        return await fetch(endpoint, { method: "POST", headers: { "Content-Type": "image/jpeg", "Authorization": "Bearer " + tok }, body: blob, signal: controller.signal });
+      } finally { clearTimeout(timer); }
+    };
+    let res = await send(token);
+    if (res.status === 401) { // sign-in expired or was reset: ask again right here and retry once
+      localStorage.removeItem(TOKEN_STORAGE);
+      token = await ensureSignedIn("Your sign-in expired. Enter the family password to upload this photo.");
+      if (!token) throw new Error("Upload cancelled - not signed in. The preview above was not uploaded.");
+      res = await send(token);
+      if (res.status === 401) { localStorage.removeItem(TOKEN_STORAGE); throw new Error("The photo service didn't accept the sign-in. Pick the photo again to sign in."); }
     }
     if (!res.ok) {
       const detail = res.status === 429 ? "Too many uploads right now - wait a minute and retry."
@@ -827,7 +867,6 @@ async function handlePhotoUpload(e) {
     }
     const out = await res.json();
     if (!out || typeof out.url !== "string" || !/^https:\/\//.test(out.url)) throw Object.assign(new Error("The upload service sent back an unexpected answer."), { reportable: true });
-    localStorage.setItem(PHOTO_KEY_STORAGE, key);
     fImage.value = out.url;
     setPhotoStatus("success", "✅ Photo uploaded. Image URL filled in - remember to save the recipe.");
   } catch (err) {
@@ -1696,8 +1735,7 @@ document.addEventListener("click", e => {
 // {"status":"ok"} or {"status":"error","message":...}; without reading that reply
 // the page can't know whether anything was saved.
 async function postToSheet(payload, retried) {
-  const adminKey = localStorage.getItem(ADMIN_KEY_STORAGE) || "";
-  payload = Object.assign({}, payload, { key: adminKey });
+  payload = Object.assign({}, payload, { token: localStorage.getItem(TOKEN_STORAGE) || "" });
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 30000);
   let res;
@@ -1717,12 +1755,11 @@ async function postToSheet(payload, retried) {
   let out = null;
   try { out = await res.json(); } catch (_) {}
   if (out && out.status === "error" && out.message === "unauthorized") {
-    // Ask for the key right here so nothing in the open form is lost, then retry once.
-    if (retried) throw new Error("The admin key wasn't accepted, so nothing was saved.");
-    const k = (prompt("The save service needs the admin key. Enter it to save (your form stays as it is).") || "").trim();
-    if (!k) throw new Error("Not saved - no admin key entered. Your form is unchanged.");
-    if (await verifyAdminKey(k) !== "ok") { throw new Error("That admin key wasn't accepted, so nothing was saved."); }
-    localStorage.setItem(ADMIN_KEY_STORAGE, k);
+    // Sign in again right here so nothing in the open form is lost, then retry once.
+    localStorage.removeItem(TOKEN_STORAGE);
+    if (retried) throw new Error("The sign-in wasn't accepted, so nothing was saved. Your form is unchanged.");
+    const t = await ensureSignedIn("Your sign-in expired. Enter the family password to save (your form stays as it is).");
+    if (!t) throw new Error("Not saved - not signed in. Your form is unchanged.");
     return postToSheet(payload, true);
   }
   if (!out || out.status !== "ok") {

@@ -10,7 +10,7 @@ const browser=await chromium.launch({executablePath:process.env.CHROME_PATH||'/u
 const page=await browser.newPage({viewport:{width:1280,height:960}});
 const errors=[];page.on('pageerror',e=>errors.push(e.message));
 let prompts=0;page.on('dialog',d=>{prompts++;d.accept('k3y')});
-await page.addInitScript(()=>{sessionStorage.setItem('jcb_admin_ok','1');localStorage.setItem('jcb_admin_key','test-key');});
+await page.addInitScript(()=>{sessionStorage.setItem('jcb_admin_ok','1');localStorage.setItem('jcb_admin_token','test-token');});
 let mode='ok';const uploads=[];
 await page.route('**/photo',async route=>{
   const r=route.request();
@@ -35,7 +35,7 @@ const u=uploads[0];
 assert(u.type==='image/jpeg','content type '+u.type);
 assert(u.body[0]===0xff&&u.body[1]===0xd8,'jpeg magic');
 assert(!u.body.includes(Buffer.from('Exif')),'no EXIF block');
-assert(u.auth==='Bearer test-key'&&prompts===0,'saved admin key sent, no prompt');
+assert(u.auth==='Bearer test-token'&&prompts===0,'saved token sent, no prompt');
 assert(u.body.length<=500*1024,'size '+u.body.length);
 console.log('original bytes',png.length,'uploaded bytes',u.body.length);
 assert((await page.inputValue('#f-image')).endsWith('/photo/aaaaaaaaaaaaaaaaaaaaaaaa.jpg'),'f-image filled');
@@ -48,10 +48,16 @@ await page.setInputFiles('#photo-file-input',{name:'dish.png',mimeType:'image/pn
 await page.waitForFunction(()=>document.getElementById('photo-status').textContent.includes('uploaded'));
 assert(prompts===0,'no re-prompt');
 mode='401';
+// Expired sign-in: a password box appears over the page (form kept); cancelling leaves the field untouched.
+await page.fill('#f-name','keep me');
 await page.setInputFiles('#photo-file-input',{name:'dish.png',mimeType:'image/png',buffer:png});
-await page.waitForFunction(()=>document.getElementById('photo-status').textContent.includes("key wasn't accepted"));
-assert(await page.evaluate(()=>localStorage.getItem('jcb_admin_key'))===null,'bad key cleared');
+await page.waitForSelector('#fp-input');
+assert(await page.evaluate(()=>localStorage.getItem('jcb_admin_token'))===null,'rejected token cleared');
+await page.click('#fp-cancel');
+await page.waitForFunction(()=>document.getElementById('photo-status').textContent.includes('Upload cancelled'));
+assert(await page.inputValue('#f-name')==='keep me','form kept');
 mode='ok';
+await page.evaluate(()=>localStorage.setItem('jcb_admin_token','test-token'));
 // Failure: 429 keeps the old URL out of the field and shows a message.
 await page.fill('#f-image','');mode='429';
 await page.setInputFiles('#photo-file-input',{name:'dish.png',mimeType:'image/png',buffer:png});

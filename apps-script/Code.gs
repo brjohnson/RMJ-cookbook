@@ -8,12 +8,16 @@
  *            case-insensitively). Requests from the admin page carry
  *            `type: "article"` so this script knows which tab to write.
  *
- * ACCESS CONTROL (added): every write must carry the admin key. The key lives only in
- * Script Properties (Project Settings > Script Properties), never in this file or the site:
- *   ADMIN_KEY  the secret the admin page sends with each save/delete
- *   STRICT     "true" = reject writes without a valid key.
- *              anything else = permissive rollout mode (valid key accepted, requests
- *              without a key still accepted so nothing locks out during the switch).
+ * ACCESS CONTROL (added): every write must carry a valid session token. The family logs in
+ * once with the shared password; the script checks it and returns a signed token that the
+ * browser keeps instead of the password. Secrets live only in Script Properties
+ * (Project Settings > Script Properties), never in this file or the site:
+ *   FAMILY_PASSWORD  the shared password (checked only at login)
+ *   SESSION_SECRET   long random string that signs tokens. Also set as the photo worker's
+ *                    SESSION_SECRET. Changing it signs every browser out at once.
+ *   STRICT           "true" = reject writes without a valid token.
+ *                    anything else = permissive rollout mode (valid tokens accepted, but
+ *                    requests without one are still accepted so nothing locks out).
  * Rollback: set STRICT to false (no redeploy needed).
  *
  * HOW TO UPDATE YOUR APPS SCRIPT:
@@ -29,20 +33,30 @@
 const SHEET_NAME          = "recipes";  // recipes tab (matched case-insensitively)
 const ARTICLES_SHEET_NAME = "articles"; // articles tab (matched case-insensitively)
 
+const SESSION_DAYS = 30; // a token is valid this long; the admin page renews it each time it is opened
+
 function doPost(e) {
   try {
     const data = JSON.parse(e.postData.contents);
-
-    // Key check. "auth" just verifies a key (used by the admin login screen).
     const props = PropertiesService.getScriptProperties();
-    const adminKey = props.getProperty("ADMIN_KEY") || "";
     const strict = props.getProperty("STRICT") === "true";
-    const keyOk = adminKey !== "" && safeEqual(String(data.key || ""), adminKey);
-    delete data.key; // never write the key into the sheet
-    if (data.action === "auth") {
-      return keyOk ? jsonOut({ status: "ok" }) : jsonOut({ status: "error", message: "unauthorized" });
+
+    // Login: the only place the password is checked. Returns a signed token.
+    if (data.action === "login") {
+      const pw = props.getProperty("FAMILY_PASSWORD") || "";
+      if (!pw || !props.getProperty("SESSION_SECRET")) throw new Error("Login is not set up yet");
+      if (!safeEqual(String(data.password || ""), pw)) { Utilities.sleep(2000); return jsonOut({ status: "error", message: "unauthorized" }); }
+      return jsonOut(Object.assign({ status: "ok" }, issueToken()));
     }
-    if (strict && !keyOk) return jsonOut({ status: "error", message: "unauthorized" });
+    // Refresh: swap a still-valid token for a fresh one.
+    if (data.action === "refresh") {
+      return verifyToken(data.token) ? jsonOut(Object.assign({ status: "ok" }, issueToken())) : jsonOut({ status: "error", message: "unauthorized" });
+    }
+
+    const tokenOk = verifyToken(data.token);
+    delete data.token; // never write the token into the sheet
+    delete data.password;
+    if (strict && !tokenOk) return jsonOut({ status: "error", message: "unauthorized" });
 
     const ss = SpreadsheetApp.getActiveSpreadsheet();
 
@@ -70,6 +84,24 @@ function doPost(e) {
   } catch (err) {
     return jsonOut({ status: "error", message: err.message });
   }
+}
+
+// ── Session tokens: "v1.<expiry seconds>.<HMAC-SHA256 of 'v1.<expiry>'>" ─────────
+function signValue(value) {
+  const secret = PropertiesService.getScriptProperties().getProperty("SESSION_SECRET") || "";
+  if (!secret) return "";
+  return Utilities.base64EncodeWebSafe(Utilities.computeHmacSha256Signature(value, secret)).replace(/=+$/, "");
+}
+function issueToken() {
+  const exp = Math.floor(Date.now() / 1000) + SESSION_DAYS * 86400;
+  return { token: "v1." + exp + "." + signValue("v1." + exp), expires: exp };
+}
+function verifyToken(token) {
+  const m = /^v1\.(\d{1,12})\.([A-Za-z0-9_-]+)$/.exec(String(token || ""));
+  if (!m) return false;
+  if (Number(m[1]) < Math.floor(Date.now() / 1000)) return false;
+  const expected = signValue("v1." + m[1]);
+  return expected !== "" && safeEqual(m[2], expected);
 }
 
 // Compare two strings without bailing out at the first difference.

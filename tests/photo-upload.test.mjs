@@ -1,13 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 const source = fs.readFileSync('proxy/src/worker.js', 'utf8');
 const { default: worker } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
 const ORIGIN = 'https://thejohnsoncookbook.com';
 const kv = () => { const m = new Map(); return { m, put: async (k, v) => { m.set(k, v); }, get: async k => (m.has(k) ? m.get(k).buffer.slice(0) : null) }; };
-const makeEnv = (over = {}) => ({ UPLOAD_KEY: 'k3y', PHOTOS: kv(), PHOTO_RATE_LIMITER: { limit: async () => ({ success: true }) }, ...over });
+const tokenFor = (exp, secret = 'sec') => `v1.${exp}.` + crypto.createHmac('sha256', secret).update('v1.' + exp).digest('base64url');
+const future = () => Math.floor(Date.now() / 1000) + 3600;
+const makeEnv = (over = {}) => ({ SESSION_SECRET: 'sec', PHOTOS: kv(), PHOTO_RATE_LIMITER: { limit: async () => ({ success: true }) }, ...over });
 const jpeg = (n = 100) => { const b = new Uint8Array(n); b[0] = 0xff; b[1] = 0xd8; b[2] = 0xff; b[n - 2] = 0xff; b[n - 1] = 0xd9; return b; };
-const post = (body, headers = {}) => new Request('https://worker.test/photo', { method: 'POST', headers: { Origin: ORIGIN, 'Content-Type': 'image/jpeg', Authorization: 'Bearer k3y', ...headers }, body });
+const post = (body, headers = {}) => new Request('https://worker.test/photo', { method: 'POST', headers: { Origin: ORIGIN, 'Content-Type': 'image/jpeg', Authorization: 'Bearer ' + tokenFor(future()), ...headers }, body });
 
 test('stores a valid JPEG and serves it back with long caching', async () => {
   const env = makeEnv();
@@ -40,9 +43,14 @@ test('rejects bad origin, method, type, size, content, and missing config', asyn
   assert.equal((await worker.fetch(post('<script>alert(1)</script>'), env)).status, 400);
   assert.equal((await worker.fetch(post(jpeg()), { PHOTO_RATE_LIMITER: env.PHOTO_RATE_LIMITER })).status, 503);
   assert.equal((await worker.fetch(post(jpeg()), { PHOTOS: env.PHOTOS })).status, 503);
-  assert.equal((await worker.fetch(post(jpeg()), { ...env, UPLOAD_KEY: undefined })).status, 503);
+  assert.equal((await worker.fetch(post(jpeg()), { ...env, SESSION_SECRET: undefined })).status, 503);
   assert.equal((await worker.fetch(post(jpeg(), { Authorization: 'Bearer wrong' }), env)).status, 401);
   assert.equal((await worker.fetch(post(jpeg(), { Authorization: '' }), env)).status, 401);
+  assert.equal((await worker.fetch(post(jpeg(), { Authorization: 'Bearer ' + tokenFor(Math.floor(Date.now() / 1000) - 5) }), env)).status, 401, 'expired token');
+  assert.equal((await worker.fetch(post(jpeg(), { Authorization: 'Bearer ' + tokenFor(future(), 'other-secret') }), env)).status, 401, 'token signed with another secret');
+  const t = tokenFor(future()).split('.'); t[1] = String(Number(t[1]) + 99999);
+  assert.equal((await worker.fetch(post(jpeg(), { Authorization: 'Bearer ' + t.join('.') }), env)).status, 401, 'expiry tampered');
+  assert.equal((await worker.fetch(post(jpeg(), { Authorization: 'Bearer k3y' }), env)).status, 401, 'raw password style value');
   assert.equal((await worker.fetch(post(jpeg()), makeEnv({ PHOTO_RATE_LIMITER: { limit: async () => ({ success: false }) } }))).status, 429);
   assert.equal((await worker.fetch(post(jpeg()), makeEnv({ PHOTOS: { put: async () => { throw new Error('x'); } } }))).status, 503);
   assert.equal(env.PHOTOS.m.size, 0);
