@@ -96,7 +96,7 @@ function corsHeaders(origin) {
 
 // This public endpoint is diagnostic telemetry, not authentication or an audit
 // trail. Origin checks reduce browser abuse; non-browser clients can forge them.
-const REPORT_KINDS = new Set(["runtime", "unhandled_rejection", "resource_load", "ocr_scan", "url_import"]);
+const REPORT_KINDS = new Set(["runtime", "unhandled_rejection", "resource_load", "ocr_scan", "ocr_empty", "url_import"]);
 const REPORT_NAMES = new Set(["Error", "TypeError", "ReferenceError", "SyntaxError", "RangeError", "URIError", "EvalError", "AbortError", "NetworkError", "UnknownError"]);
 
 async function handleReport(request, env, origin, cors) {

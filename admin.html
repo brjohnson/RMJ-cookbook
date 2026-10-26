@@ -577,7 +577,7 @@ async function importFromURL() {
       }
     }
   } catch (err) {
-    window.AdminErrors.report("url_import", err);
+    window.AdminErrors?.report("url_import", err);
     statusEl.className = "url-import-status error";
     statusEl.textContent = "✗ " + err.message + (err.detail ? " (" + err.detail + ")" : "");
   } finally {
@@ -926,6 +926,7 @@ async function runOCR() {
         const { data: { text } } = await worker.recognize(ocrImages[i].dataUrl);
         pageTexts.push(text || "");
       } catch (err) {
+        window.AdminErrors?.report("ocr_scan", err);
         failures.push("screenshot " + (i + 1) + " (" + ocrImages[i].name + ")");
         pageTexts.push("");
       }
@@ -936,6 +937,7 @@ async function runOCR() {
     progressBar.style.width = "100%";
 
     if (!combined.length) {
+      if (!failures.length) window.AdminErrors?.report("ocr_empty", null);
       progressWrap.style.display = "none";
       statusEl.className = "ocr-status error";
       statusEl.textContent = failures.length
@@ -968,7 +970,7 @@ async function runOCR() {
     }, 700);
 
   } catch (err) {
-    window.AdminErrors.report("ocr_scan", err);
+    window.AdminErrors?.report("ocr_scan", err);
     const msg = (err && err.message) || String(err) || "unknown error";
     progressWrap.style.display = "none";
     statusEl.className = "ocr-status error";

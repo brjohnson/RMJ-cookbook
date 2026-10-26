@@ -28,7 +28,8 @@ layer and cannot see every real-device failure.
 - Uncaught JS errors and unhandled promise rejections, installed before editor/OCR
   libraries load. A capture-phase error listener also flags script/stylesheet load
   failures. An unavailable reporting script itself cannot report its own failure.
-- Explicit failed OCR scans and URL imports. Empty-input validation is not a
+- Explicit failed OCR scans (including individual screenshots in a partial scan),
+  scans that yield no text (`ocr_empty`), and failed URL imports. Empty-input validation is not a
   failure. A partial import is not reported as a failure.
 - Fixed version/build label, category, allowlisted exception type, line/column.
   No raw messages, stacks, full URLs, recipe text, screenshots, form values,
@@ -83,4 +84,9 @@ References:
 From the repository root: `node --test tests/admin-errors.test.mjs`.
 Tests exercise worker request validation, size/rate guards, privacy allowlisting,
 client deduplication/caps, failed reporting, early error listeners, explicit hooks,
-and the unchanged GET proxy path. Browser checks are recorded in the PR.
+and the unchanged GET proxy path. For the optional real-browser fault-injection
+smoke test, install Playwright in your development environment and run
+`node tests/browser-smoke.cjs` (Chrome at `/usr/bin/google-chrome`, or set
+`CHROME_PATH`). It serves the branch locally on port 8000 and mocks only report
+transport and the deliberately failing import/OCR operations. It does not save
+recipes or change production. Browser checks are also recorded in the PR.
