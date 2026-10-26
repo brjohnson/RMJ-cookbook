@@ -33,3 +33,13 @@ Copy that URL into `../config.js` as `RECIPE_PROXY_URL`.
 
 Cloudflare Workers' free plan allows 100,000 requests/day — far beyond
 what recipe imports will ever use.
+
+## If an import still fails
+
+Some recipe sites (NYT Cooking is the known one) block server-side fetching
+entirely — no proxy will help, including this one. The admin page detects that
+case and tells the user to use the **Scan recipe screenshots** tool instead,
+which works no matter what the site allows.
+
+The worker gives up on an unresponsive site after 12 seconds and returns
+HTTP 504, so the admin page can show a timeout message instead of hanging.

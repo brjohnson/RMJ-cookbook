@@ -45,5 +45,5 @@ const CONFIG = {
   // Paste the deployed worker URL here, e.g.
   // https://johnson-cookbook-proxy.<your-subdomain>.workers.dev
   // Leave blank to fall back to public CORS proxies.
-  RECIPE_PROXY_URL: "",
+  RECIPE_PROXY_URL: "https://johnson-cookbook-proxy.johnson-cookbook.workers.dev",
 };
