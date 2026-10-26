@@ -263,18 +263,19 @@
       <div class="form-section-title">📸 Recipe Photo</div>
       <div class="form-group">
         <label>Upload Photo</label>
-        <input type="file" id="photo-file-input" accept="image/*" style="display:none" onchange="handlePhotoUpload(event)">
+        <input type="file" id="photo-file-input" accept="image/*" style="display:none" onchange="handlePhotoUpload(event); this.value='';">
         <div class="upload-zone" id="photo-drop-zone" onclick="document.getElementById('photo-file-input').click()" role="button" tabindex="0">
           <div class="upload-icon">📷</div>
           <span class="upload-label">Drop a photo of the finished dish, or click to browse</span>
         </div>
         <img id="photo-preview" alt="Recipe photo preview">
-        <p class="form-hint">Max 5 MB. JPEG or PNG. After upload, you'll get a sharable URL you can paste below.</p>
+        <p class="submit-status" id="photo-status" role="status" aria-live="polite"></p>
+        <p class="form-hint">JPEG, PNG, WebP or GIF up to 15 MB. Picking a photo uploads it right away (resized, location data removed) and fills in the Image URL below. Uploaded photos are public like any image on the site. Then save the recipe as usual.</p>
       </div>
       <div class="form-group">
         <label for="f-image">Image URL</label>
         <input type="url" id="f-image" name="image" placeholder="https://… (paste a URL or use the upload above)">
-        <p class="form-hint">If you're storing photos in Google Drive or Cloudinary, paste the direct URL here.</p>
+        <p class="form-hint">Filled in by the photo upload above. You can also paste any direct image URL instead.</p>
       </div>
     </div>
 
@@ -486,7 +487,7 @@ async function fetchPageViaProxy(url, statusEl) {
   // Prefer the dedicated Cloudflare Worker if configured; fall back to the
   // public proxies if it's blank or fails.
   const proxies = [];
-  if (window.CONFIG && CONFIG.RECIPE_PROXY_URL) {
+  if (typeof CONFIG !== "undefined" && CONFIG.RECIPE_PROXY_URL) {
     proxies.push({
       name: "cookbook-proxy",
       build: u => `${CONFIG.RECIPE_PROXY_URL}?url=${encodeURIComponent(u)}`,
@@ -710,19 +711,112 @@ function stripHtmlTags(s) {
 //  PHOTO UPLOAD HANDLER
 // ============================================================
 
-function handlePhotoUpload(e) {
+const PHOTO_MAX_INPUT_BYTES = 15 * 1024 * 1024;   // largest original we will try to decode
+const PHOTO_MAX_UPLOAD_BYTES = 500 * 1024;          // after resizing; the worker enforces 600 KB
+const PHOTO_MAX_SIDE = 1200;
+const PHOTO_KEY_STORAGE = "jcb_photo_upload_key";
+let photoUploading = false;
+
+function photoUploadEndpoint() {
+  if (typeof CONFIG === "undefined") return "";
+  if (CONFIG.PHOTO_UPLOAD_URL) return CONFIG.PHOTO_UPLOAD_URL;
+  if (!CONFIG.RECIPE_PROXY_URL) return "";
+  return CONFIG.RECIPE_PROXY_URL.replace(/\/+$/, "") + "/photo";
+}
+
+function setPhotoStatus(kind, text) {
+  const el = document.getElementById("photo-status");
+  el.className = "submit-status" + (kind ? " " + kind : "");
+  el.textContent = text || "";
+}
+
+// Decode the picked file, scale it down and re-encode as JPEG so phone photos
+// become a few hundred KB instead of several MB.
+async function resizePhoto(file) {
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch (_) {
+    throw new Error("Couldn't read that image. If it is a HEIC photo, convert it to JPG or PNG (or take a screenshot of it) and try again.");
+  }
+  const scale = Math.min(1, PHOTO_MAX_SIDE / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+  canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#fff"; // JPEG has no transparency
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  if (bitmap.close) bitmap.close();
+  for (const quality of [0.85, 0.75, 0.65, 0.5]) {
+    const blob = await new Promise(res => canvas.toBlob(res, "image/jpeg", quality));
+    if (blob && blob.size <= PHOTO_MAX_UPLOAD_BYTES) return blob;
+  }
+  throw new Error("That photo is too detailed to shrink enough. Try a smaller or cropped version.");
+}
+
+async function handlePhotoUpload(e) {
   const file = e.target.files[0];
   if (!file) return;
-  const reader = new FileReader();
-  reader.onload = evt => {
+  if (photoUploading) { setPhotoStatus("error", "A photo is still uploading - wait a moment."); return; }
+  if (!(file.type || "").startsWith("image/") && !/\.(png|jpe?g|webp|gif|bmp|heic|heif)$/i.test(file.name || "")) {
+    setPhotoStatus("error", "That file isn't an image."); return;
+  }
+  if (file.size > PHOTO_MAX_INPUT_BYTES) {
+    setPhotoStatus("error", "That photo is over 15 MB. Pick a smaller one."); return;
+  }
+  const endpoint = photoUploadEndpoint();
+  if (!endpoint) {
+    setPhotoStatus("error", "Photo upload isn't configured. Paste an image URL below instead."); return;
+  }
+  photoUploading = true;
+  const submitBtn = document.getElementById("submit-btn");
+  if (submitBtn) submitBtn.disabled = true;
+  const fImage = document.getElementById("f-image");
+  try {
+    setPhotoStatus("", "Preparing photo…");
+    const blob = await resizePhoto(file);
     const prev = document.getElementById("photo-preview");
-    prev.src = evt.target.result;
+    if (prev.dataset.blobUrl) URL.revokeObjectURL(prev.dataset.blobUrl);
+    prev.dataset.blobUrl = URL.createObjectURL(blob);
+    prev.src = prev.dataset.blobUrl;
     prev.style.display = "block";
-    // Also offer to use the local data URL temporarily
-    document.getElementById("f-image").value = "";
-    document.getElementById("f-image").placeholder = "(local image selected — add to Google Drive/Cloudinary for a permanent URL)";
-  };
-  reader.readAsDataURL(file);
+    let key = localStorage.getItem(PHOTO_KEY_STORAGE);
+    if (!key) {
+      key = (prompt("Enter the photo upload key (asked once per browser). It is not stored on the website.") || "").trim();
+      if (!key) throw new Error("Upload cancelled - no key entered. The preview above was not uploaded.");
+    }
+    setPhotoStatus("", "Uploading photo…");
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 30000);
+    let res;
+    try {
+      res = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "image/jpeg", "Authorization": "Bearer " + key }, body: blob, signal: controller.signal });
+    } finally { clearTimeout(timer); }
+    if (res.status === 401) {
+      localStorage.removeItem(PHOTO_KEY_STORAGE);
+      throw new Error("That upload key wasn't accepted. Pick the photo again to re-enter it.");
+    }
+    if (!res.ok) {
+      const detail = res.status === 429 ? "Too many uploads right now - wait a minute and retry."
+        : res.status === 413 ? "The photo is too large for the upload service."
+        : "The upload service returned an error (" + res.status + ").";
+      throw Object.assign(new Error(detail), { reportable: true });
+    }
+    const out = await res.json();
+    if (!out || typeof out.url !== "string" || !/^https:\/\//.test(out.url)) throw Object.assign(new Error("The upload service sent back an unexpected answer."), { reportable: true });
+    localStorage.setItem(PHOTO_KEY_STORAGE, key);
+    fImage.value = out.url;
+    setPhotoStatus("success", "✅ Photo uploaded. Image URL filled in - remember to save the recipe.");
+  } catch (err) {
+    const aborted = err && err.name === "AbortError";
+    const network = err instanceof TypeError;
+    setPhotoStatus("error", "❌ " + (aborted ? "The upload timed out. Try again." : network ? "Couldn't reach the upload service. Check your connection and try again." : err.message));
+    if (aborted || network || (err && err.reportable)) window.AdminErrors?.report("photo_upload", network ? err : null);
+  } finally {
+    photoUploading = false;
+    if (submitBtn) submitBtn.disabled = false;
+  }
 }
 
 // Drag-and-drop for photo zone
@@ -1578,6 +1672,7 @@ document.addEventListener("click", e => {
 
 function submitForm(e) {
   e.preventDefault();
+  if (photoUploading) { setPhotoStatus("error", "Wait for the photo upload to finish, then save."); return; }
   const status = document.getElementById("submit-status");
   const btn = document.getElementById("submit-btn");
 
@@ -1706,6 +1801,7 @@ function clearForm() {
   clearCategoryPills();
   clearRelated();
   document.getElementById("photo-preview").style.display = "none";
+  setPhotoStatus("", "");
   clearOCRImages();
   document.getElementById("ocr-progress-wrap").style.display = "none";
   document.getElementById("voice-transcript").style.display = "none";
