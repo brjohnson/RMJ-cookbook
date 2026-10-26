@@ -4,6 +4,18 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Recipe — The Johnson Cookbook</title>
+  <meta name="description" content="A recipe from The Johnson Cookbook.">
+  <link rel="canonical" href="https://thejohnsoncookbook.com/recipe.html">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="The Johnson Cookbook">
+  <meta property="og:url" content="https://thejohnsoncookbook.com/recipe.html">
+  <meta property="og:title" content="Recipe — The Johnson Cookbook">
+  <meta property="og:description" content="A recipe from The Johnson Cookbook.">
+  <meta property="og:image" content="https://thejohnsoncookbook.com/apple-touch-icon.png">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Recipe — The Johnson Cookbook">
+  <meta name="twitter:description" content="A recipe from The Johnson Cookbook.">
+  <meta name="twitter:image" content="https://thejohnsoncookbook.com/apple-touch-icon.png">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🥘</text></svg>">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <meta name="apple-mobile-web-app-title" content="Cookbook">
@@ -236,12 +248,25 @@ function renderFromData(rows) {
   const recipe = all.find(r => r.slug === urlId || r.name.toLowerCase().replace(/\s+/g,"-") === urlId);
   if (!recipe) { renderError(); return; }
 
-  // Set page title and OG tags
-  document.title = `${recipe.name} — The Johnson Cookbook`;
-  document.querySelector('meta[property="og:title"]')?.setAttribute("content", `${recipe.name} — The Johnson Cookbook`);
-  document.querySelector('meta[property="og:description"]')?.setAttribute("content", recipe.description || "A recipe from The Johnson Cookbook.");
-  if (recipe.image) {
-    document.querySelector('meta[property="og:image"]')?.setAttribute("content", recipe.image);
+  // Set page title and share-preview tags (the tags exist in <head>; this fills them per recipe).
+  // Note: link crawlers that don't run JavaScript only see the defaults in <head>.
+  {
+    const title = `${recipe.name} — The Johnson Cookbook`;
+    const desc = (recipe.description || "A recipe from The Johnson Cookbook.").replace(/\s+/g, " ").trim();
+    const pageUrl = `https://thejohnsoncookbook.com/recipe.html?id=${encodeURIComponent(recipe.slug)}`;
+    const setMeta = (sel, val) => document.querySelector(sel)?.setAttribute(sel.includes("link") ? "href" : "content", val);
+    document.title = title;
+    setMeta('meta[name="description"]', desc);
+    setMeta('link[rel="canonical"]', pageUrl);
+    setMeta('meta[property="og:url"]', pageUrl);
+    setMeta('meta[property="og:title"]', title);
+    setMeta('meta[property="og:description"]', desc);
+    setMeta('meta[name="twitter:title"]', title);
+    setMeta('meta[name="twitter:description"]', desc);
+    if (/^https?:\/\//.test(recipe.image || "")) {
+      setMeta('meta[property="og:image"]', recipe.image);
+      setMeta('meta[name="twitter:image"]', recipe.image);
+    }
   }
 
   const favs = getFavs();
