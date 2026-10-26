@@ -3,7 +3,7 @@
 (() => {
   "use strict";
   const BUILD = "admin-errors-v1";
-  const KINDS = new Set(["runtime", "unhandled_rejection", "resource_load", "ocr_scan", "ocr_empty", "url_import", "photo_upload"]);
+  const KINDS = new Set(["runtime", "unhandled_rejection", "resource_load", "ocr_scan", "ocr_empty", "url_import", "photo_upload", "save_recipe"]);
   const NAMES = new Set(["Error", "TypeError", "ReferenceError", "SyntaxError", "RangeError", "URIError", "EvalError", "AbortError", "NetworkError"]);
   const seen = new Map();
   let count = 0;

@@ -70,6 +70,27 @@ await page.waitForFunction(()=>document.getElementById('photo-status').textConte
 assert(uploads.length===before,'nothing uploaded for bad files');
 // Save button is re-enabled after every outcome.
 assert(!(await page.$eval('#submit-btn',b=>b.disabled)),'submit re-enabled');
+// Save/delete confirmation is truthful. The Apps Script is always stubbed here: tests never touch production data.
+let sheetReply={status:200,body:'{"status":"ok"}'};const posts=[];
+await page.route('**script.google.com/**',route=>{posts.push(route.request().postData());if(sheetReply==='abort')return route.abort();route.fulfill({status:sheetReply.status,headers:{'Access-Control-Allow-Origin':'*','Content-Type':'text/plain'},body:sheetReply.body})});
+await page.fill('#f-name','Test dish');
+const saveStatus=async()=>{await page.evaluate(()=>submitForm(new Event('submit')));await page.waitForFunction(()=>/Saved|NOT confirmed/.test(document.getElementById('submit-status').textContent));return page.textContent('#submit-status')};
+assert((await saveStatus()).includes('confirmed it'),'ok reply shows confirmed');
+sheetReply={status:200,body:'{"status":"error","message":"boom"}'};
+let t=await saveStatus();assert(t.includes('NOT confirmed saved')&&t.includes('boom'),'error reply shown: '+t);
+sheetReply={status:200,body:'<html>login</html>'};
+t=await saveStatus();assert(t.includes('NOT confirmed saved'),'unreadable reply: '+t);
+sheetReply='abort';
+t=await saveStatus();assert(t.includes('NOT confirmed saved'),'network failure: '+t);
+assert(posts.length===4&&posts.every(p=>JSON.parse(p).Name==='Test dish'),'only stubbed posts');
+// Editing a hidden recipe keeps it hidden; a new recipe is public.
+sheetReply={status:200,body:'{"status":"ok"}'};
+await page.evaluate(()=>{switchMode('edit');searchMatches=[{Name:'Hidden one',Slug:'hidden-one',Draft:'TRUE',Archived:'FALSE'}];selectRecipeForEdit(0)});
+await saveStatus();
+let last=JSON.parse(posts[posts.length-1]);
+assert(last.action==='update'&&last.Draft==='true'&&last.Archived==='false','edit keeps Draft: '+JSON.stringify([last.action,last.Draft,last.Archived]));
+await page.evaluate(()=>{clearEditSelection();switchMode('add')});await page.fill('#f-name','New dish');await saveStatus();
+last=JSON.parse(posts[posts.length-1]);assert(last.action==='add'&&last.Draft==='false','new recipe is not a draft');
 assert(errors.length===0,'page errors: '+errors.join('|'));
 console.log('photo upload browser checks passed');
 await browser.close();server.close();

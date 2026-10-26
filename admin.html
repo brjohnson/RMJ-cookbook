@@ -1670,6 +1670,34 @@ document.addEventListener("click", e => {
   }
 });
 
+// Send a change to the Apps Script and read its answer. The script replies with
+// {"status":"ok"} or {"status":"error","message":...}; without reading that reply
+// the page can't know whether anything was saved.
+async function postToSheet(payload) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30000);
+  let res;
+  try {
+    res = await fetch(CONFIG.APPS_SCRIPT_URL, {
+      method: "POST",
+      // text/plain keeps this a simple CORS request (no preflight); the script parses the body as JSON either way.
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    throw new Error(err && err.name === "AbortError"
+      ? "No answer from the save service after 30 seconds, so it is unknown whether this saved. Check the sheet before trying again."
+      : "Couldn't confirm the save: no readable answer from the save service. Check the sheet before trying again.");
+  } finally { clearTimeout(timer); }
+  let out = null;
+  try { out = await res.json(); } catch (_) {}
+  if (!out || out.status !== "ok") {
+    throw new Error(out && out.message ? "The save service refused it: " + out.message : "The save service did not confirm the save (unreadable reply). Check the sheet before trying again.");
+  }
+  return out;
+}
+
 function submitForm(e) {
   e.preventDefault();
   if (photoUploading) { setPhotoStatus("error", "Wait for the photo upload to finish, then save."); return; }
@@ -1689,22 +1717,18 @@ function submitForm(e) {
   status.className = "submit-status";
   status.textContent = editMode ? "Saving changes…" : "Saving…";
 
-  fetch(CONFIG.APPS_SCRIPT_URL, {
-    method: "POST",
-    mode: "no-cors",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  })
+  postToSheet(data)
   .then(() => {
     status.className = "submit-status success";
     status.textContent = editMode
-      ? "✅ Changes saved! The cookbook will reflect them after the sheet refreshes."
-      : "✅ Recipe saved! It will appear in the cookbook after the sheet refreshes.";
+      ? "✅ Saved - the save service confirmed it. The public site picks it up after the sheet republishes (a few minutes)."
+      : "✅ Saved - the save service confirmed it. It will appear in the cookbook after the sheet republishes (a few minutes).";
     btn.disabled = false;
   })
   .catch(err => {
     status.className = "submit-status error";
-    status.textContent = "❌ Error: " + err.message;
+    status.textContent = "❌ NOT confirmed saved. " + err.message;
+    window.AdminErrors?.report("save_recipe", null);
     btn.disabled = false;
   });
 }
@@ -1727,23 +1751,18 @@ function deleteRecipe() {
   status.className = "submit-status";
   status.textContent = "Deleting…";
 
-  fetch(CONFIG.APPS_SCRIPT_URL, {
-    method: "POST",
-    mode: "no-cors",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ action: "delete", originalSlug: editSlug, Slug: editSlug, Name: name }),
-  })
+  postToSheet({ action: "delete", originalSlug: editSlug, Slug: editSlug, Name: name })
   .then(() => {
     // Drop it from the local cache so it stops appearing in edit search.
     if (allRecipesCache) allRecipesCache = allRecipesCache.filter(r => (r["Slug"] || "").trim() !== editSlug);
     clearEditSelection();
     status.className = "submit-status success";
-    status.textContent = `✅ "${name}" deleted. It will disappear from the cookbook after the sheet refreshes.`;
+    status.textContent = `✅ "${name}" deleted - the save service confirmed it. It disappears from the site after the sheet republishes (a few minutes).`;
     btn.disabled = false;
   })
   .catch(err => {
     status.className = "submit-status error";
-    status.textContent = "❌ Error: " + err.message;
+    status.textContent = "❌ NOT confirmed deleted. " + err.message;
     btn.disabled = false;
   });
 }
@@ -1767,8 +1786,8 @@ function collectFormData() {
     "Principal ingredients": getSelectedIngredients().join(";"),
     "Chef's notes":          plainToHtml(document.getElementById("f-notes").value),
     "Created On":       new Date().toUTCString(),
-    Draft:              "false",
-    Archived:           "false",
+    Draft:              editMode ? editDraft : "false",
+    Archived:           editMode ? editArchived : "false",
   };
 }
 
@@ -1850,6 +1869,9 @@ function slugToDisplayName(slug) {
 
 let editMode = false;
 let editSlug = null;
+// Draft/Archived of the recipe being edited, so saving an edit keeps a hidden recipe hidden.
+let editDraft = "false", editArchived = "false";
+const sheetBool = v => /^(true|yes|1)$/i.test(String(v || "").trim()) ? "true" : "false";
 let searchMatches = [];   // allRecipesCache is declared up with the ingredient pills
 
 function switchMode(mode) {
@@ -1914,6 +1936,8 @@ function selectRecipeForEdit(index) {
   if (!r) return;
 
   editSlug = r["Slug"]?.trim() || "";
+  editDraft = sheetBool(r["Draft"]);
+  editArchived = sheetBool(r["Archived"]);
 
   // Pre-fill all form fields
   document.getElementById("f-name").value        = r["Name"]?.trim() || "";
@@ -1946,6 +1970,7 @@ function selectRecipeForEdit(index) {
 
 function clearEditSelection() {
   editSlug = null;
+  editDraft = "false"; editArchived = "false";
   document.getElementById("delete-btn").style.display = "none";
   document.getElementById("edit-selected-banner").style.display = "none";
   document.getElementById("edit-selected-name").textContent = "";
