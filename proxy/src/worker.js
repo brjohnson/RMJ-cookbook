@@ -155,9 +155,10 @@ async function handleReport(request, env, origin, cors) {
 //  GET  /photo/<id>.jpg  serves it with long-lived caching, so the recipe
 //                     pages load it like any other image.
 //
-//  Uploads need the UPLOAD_KEY secret (set with `wrangler secret put
-//  UPLOAD_KEY`; never in config.js or the repo). The admin page asks for it
-//  once and keeps it in that browser's localStorage. The Origin check only
+//  Uploads need a session token signed by the same SESSION_SECRET the Apps
+//  Script uses (set with `wrangler secret put SESSION_SECRET`; never in
+//  config.js or the repo). The admin page gets the token when the family
+//  password is entered and keeps only the token in that browser. The Origin check only
 //  stops other websites from calling this from a browser. The size cap, JPEG
 //  check, per-IP rate limit and random ids bound the rest. Nothing here can
 //  read, list, overwrite or delete other stored photos.
@@ -170,15 +171,15 @@ async function handlePhotoUpload(request, env, origin, cors) {
   if (!ALLOWED_ORIGINS.includes(origin)) return reply("Origin not allowed", 403);
   if (request.method === "OPTIONS") return reply(null, 204);
   if (request.method !== "POST") return reply("Method not allowed", 405);
-  // Fails closed unless the owner has set the UPLOAD_KEY secret.
-  if (!env.PHOTOS || !env.PHOTO_RATE_LIMITER || !env.UPLOAD_KEY) return reply("Photo upload not configured", 503);
+  // Fails closed unless the owner has set the SESSION_SECRET secret.
+  if (!env.PHOTOS || !env.PHOTO_RATE_LIMITER || !env.SESSION_SECRET) return reply("Photo upload not configured", 503);
   try {
     const { success } = await env.PHOTO_RATE_LIMITER.limit({ key: request.headers.get("CF-Connecting-IP") || "unknown" });
     if (!success) return reply("Too many uploads", 429);
   } catch (_) { return reply("Photo upload temporarily unavailable", 503); }
   // Rate limit first so wrong guesses are throttled, then check the upload key.
   const supplied = (request.headers.get("Authorization") || "").replace(/^Bearer /, "");
-  if (!(await keysMatch(supplied, env.UPLOAD_KEY))) return reply("Upload key required", 401);
+  if (!(await sessionTokenValid(supplied, env.SESSION_SECRET))) return reply("Sign-in required", 401);
   if ((request.headers.get("Content-Type") || "").toLowerCase().split(";")[0].trim() !== "image/jpeg") return reply("JPEG required", 415);
   const declared = Number(request.headers.get("Content-Length"));
   if (Number.isFinite(declared) && declared > PHOTO_MAX_BYTES) return reply("Photo too large", 413);
@@ -210,11 +211,17 @@ async function handlePhotoUpload(request, env, origin, cors) {
 }
 
 // Compare SHA-256 digests so timing does not reveal how much of a guess matched.
-async function keysMatch(a, b) {
+// Token format (same as the Apps Script): "v1.<expiry seconds>.<base64url HMAC-SHA256 of 'v1.<expiry>'>"
+async function sessionTokenValid(token, secret) {
+  const m = /^v1\.(\d{1,12})\.([A-Za-z0-9_-]+)$/.exec(String(token || ""));
+  if (!m || !secret || Number(m[1]) < Math.floor(Date.now() / 1000)) return false;
   const enc = new TextEncoder();
-  const [x, y] = await Promise.all([a, b].map(async v => new Uint8Array(await crypto.subtle.digest("SHA-256", enc.encode(String(v))))));
-  let diff = 0;
-  for (let i = 0; i < x.length; i++) diff |= x[i] ^ y[i];
+  const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = new Uint8Array(await crypto.subtle.sign("HMAC", key, enc.encode("v1." + m[1])));
+  let bin = ""; for (const b of sig) bin += String.fromCharCode(b);
+  const expected = btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  let diff = expected.length ^ m[2].length;
+  for (let i = 0; i < Math.max(expected.length, m[2].length); i++) diff |= (expected.charCodeAt(i) || 0) ^ (m[2].charCodeAt(i) || 0);
   return diff === 0;
 }
 

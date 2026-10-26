@@ -57,9 +57,12 @@ One-time setup, before merging the PR that uses it:
 
 1. `npx wrangler deploy` from `proxy/` (Wrangler 4.45+ creates the `PHOTOS` KV namespace
    and the `PHOTO_RATE_LIMITER` binding; change namespace id `1002` first if it is in use).
-2. `npx wrangler secret put UPLOAD_KEY` and enter a passphrase. Uploads are refused
-   (503) until this is set. The admin page asks for it once per browser and keeps it in
-   that browser's localStorage. It is never in the repo or `config.js`.
+2. `npx wrangler secret put SESSION_SECRET` and paste the same long random string that is
+   set as `SESSION_SECRET` in the Apps Script project's Script Properties. Uploads are refused
+   (503) until this is set. The family signs in once per browser with the shared password
+   (checked by the Apps Script); the browser keeps only a signed token (30 days, renewed each
+   time the admin page is opened), which the worker verifies with this secret. Nothing secret
+   is in the repo or `config.js`.
 
 Limits and cost (Workers Free plan, https://developers.cloudflare.com/kv/platform/pricing/):
 1 GB storage, 1,000 writes/day, 100,000 reads/day. Over the limit, operations fail
@@ -67,5 +70,5 @@ instead of billing. On the Paid plan overage is billed (storage $0.50/GB-month).
 photo is capped at 600 KB, so 1 GB holds well over a thousand photos.
 
 Removing a photo: `npx wrangler kv key delete --binding PHOTOS "photo:<id>" --remote`.
-Rotating the key: `wrangler secret put UPLOAD_KEY` again, then re-enter it in the admin page.
+Signing everyone out: change `SESSION_SECRET` in both the Apps Script properties and here (`wrangler secret put SESSION_SECRET`); everyone is asked for the password again on their next save or upload.
 Uploads accept only JPEGs under 600 KB with a valid key and are rate limited per IP.
