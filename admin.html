@@ -13,11 +13,12 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
   <script defer src="nav.js"></script>
+  
   <!-- Quill rich text editor -->
   <link href="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.snow.min.css" rel="stylesheet">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.min.js"></script>
   <!-- Tesseract.js for OCR (scans printed/handwritten recipe images) -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <!-- PapaParse for CSV parsing in edit mode -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 </head>
@@ -136,7 +137,7 @@
       <!-- URL IMPORT — full width, top -->
       <div class="tool-panel url-import-panel">
         <div class="tool-panel-title">🔗 Import from a URL</div>
-        <p class="tool-panel-desc">Paste a link from any recipe site — AllRecipes, NYT Cooking, Serious Eats, Food52, Epicurious, and most others. The recipe details will be extracted and filled in automatically.</p>
+        <p class="tool-panel-desc">Paste a link from any recipe site — AllRecipes, Serious Eats, Food52, Epicurious, and most others. Some sites (like NYT Cooking) block importing — for those, use Scan recipe screenshots below.</p>
         <div class="url-import-row">
           <input type="url" id="url-import-input" placeholder="https://www.seriouseats.com/recipe/…" autocomplete="off">
           <button type="button" class="btn btn-outline" id="url-import-btn" onclick="importFromURL()">Import</button>
@@ -148,14 +149,15 @@
 
         <!-- PHOTO SCAN -->
         <div class="tool-panel">
-          <div class="tool-panel-title">📷 Scan a recipe card</div>
-          <p class="tool-panel-desc">Upload a photo of a recipe card or clipping. OCR will extract the text and fill the form.</p>
-          <input type="file" id="ocr-file-input" accept="image/*" style="display:none" onchange="handleOCRFile(event)">
+          <div class="tool-panel-title">📷 Scan recipe screenshots</div>
+          <p class="tool-panel-desc">Upload one or more screenshots of a recipe — from a website, a photo of a recipe card, or a cookbook page. For a long recipe, add every screenshot in order and scan them together; overlapping text between screenshots is removed automatically.</p>
+          <input type="file" id="ocr-file-input" accept="image/*" multiple style="display:none" onchange="handleOCRFiles(this.files); this.value='';">
           <div class="upload-zone" id="ocr-drop-zone" onclick="document.getElementById('ocr-file-input').click()" role="button" tabindex="0">
             <div class="upload-icon">🖼️</div>
-            <span class="upload-label">Drop a photo here, or click to browse</span>
+            <span class="upload-label">Drop screenshots here, or click to browse</span>
+            <span class="upload-sublabel">Add as many as you need — they're scanned in the order shown below</span>
           </div>
-          <img id="ocr-preview" src="" alt="Preview" style="max-width:100%;display:none;margin-top:12px;">
+          <div class="ocr-thumbs" id="ocr-thumbs"></div>
           <div class="progress-bar-wrap" id="ocr-progress-wrap">
             <div class="progress-bar" id="ocr-progress-bar"></div>
           </div>
@@ -164,7 +166,6 @@
             Scan &amp; extract text
           </button>
         </div>
-
         <!-- VOICE INPUT -->
         <div class="tool-panel">
           <div class="tool-panel-title">🎙️ Describe with voice</div>
@@ -424,8 +425,8 @@
 //  URL IMPORT — schema.org/Recipe parser
 // ============================================================
 
-// Try a series of public CORS proxies until one returns usable HTML.
-// Each entry: build(url) → proxied URL, and unwrap(responseText) → page HTML.
+// Try a series of proxies until one returns usable HTML.
+// Each entry: build(url) → proxied URL, unwrap(responseText) → page HTML.
 const CORS_PROXIES = [
   {
     name: "allorigins",
@@ -449,9 +450,41 @@ const CORS_PROXIES = [
   },
 ];
 
+// Per-proxy timeout. Public proxies hang for a long time when the target site
+// blocks them (NYT Cooking, AllRecipes); without this the user waits through
+// every proxy serially before seeing any error.
+const PROXY_TIMEOUT_MS = 12000;
+
+async function fetchViaProxy(proxy, url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PROXY_TIMEOUT_MS);
+  try {
+    const res = await fetch(proxy.build(url), { signal: controller.signal });
+    const text = await res.text();
+    return { status: res.status, ok: res.ok, text };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Classify what went wrong with one proxy attempt so the final message can
+// say what actually happened instead of a generic failure.
+function classifyProxyFailure(err, result) {
+  if (err && err.name === "AbortError") return "timeout";
+  if (result) {
+    if (result.status === 403 || result.status === 429) return "blocked";
+    if (result.status === 401) return "refused";
+    if (result.status === 408 || result.status === 504 || result.status === 520 ||
+        result.status === 522 || result.status === 524) return "timeout";
+    if (result.status >= 500) return "down";
+    if (result.status === 404) return "page not found";
+  }
+  return "unreachable";
+}
+
 async function fetchPageViaProxy(url, statusEl) {
-  // Prefer the dedicated Cloudflare Worker if configured; fall back to
-  // the public proxies if it's blank or fails.
+  // Prefer the dedicated Cloudflare Worker if configured; fall back to the
+  // public proxies if it's blank or fails.
   const proxies = [];
   if (window.CONFIG && CONFIG.RECIPE_PROXY_URL) {
     proxies.push({
@@ -462,22 +495,45 @@ async function fetchPageViaProxy(url, statusEl) {
   }
   proxies.push(...CORS_PROXIES);
 
-  let lastErr = "";
+  const failures = [];
   for (const proxy of proxies) {
     try {
       if (statusEl) statusEl.textContent = `Fetching page… (via ${proxy.name})`;
-      const res = await fetch(proxy.build(url));
-      if (!res.ok) { lastErr = `HTTP ${res.status}`; continue; }
-      const text = await res.text();
-      const html = proxy.unwrap(text);
-      // Need enough content to plausibly contain a recipe page
-      if (html && html.length > 500) return html;
-      lastErr = "empty response";
+      const result = await fetchViaProxy(proxy, url);
+      if (result.ok) {
+        const html = proxy.unwrap(result.text);
+        // Need enough content to plausibly contain a recipe page
+        if (html && html.length > 500) return html;
+        failures.push(`${proxy.name}: empty page`);
+      } else {
+        failures.push(`${proxy.name}: ${classifyProxyFailure(null, result)} (HTTP ${result.status})`);
+      }
     } catch (e) {
-      lastErr = e.message || String(e);
+      failures.push(`${proxy.name}: ${classifyProxyFailure(e, null)}`);
     }
   }
-  throw new Error("Couldn't reach that URL through any proxy (" + lastErr + "). The site may be down or blocking automated access.");
+
+  // Build a message that distinguishes timeouts from blocks and points the
+  // user at screenshot scanning, which works even when a site blocks imports.
+  let host = "";
+  try { host = new URL(url).hostname.replace(/^www\./, ""); } catch (_) {}
+  const blocked = failures.some(f => f.includes("blocked"));
+  const timedOut = failures.some(f => f.includes("timeout"));
+  const notFound = failures.every(f => f.includes("page not found") || f.includes("unreachable"));
+  let msg;
+  if (blocked && host) {
+    msg = `${host} blocked the automated fetch. Some sites — NYT Cooking is one — don't allow recipe importing at all.`;
+  } else if (timedOut && host) {
+    msg = `${host} didn't respond in time through any proxy. The site may be slow or blocking automated access.`;
+  } else if (notFound && host) {
+    msg = `${host} returned "page not found" for that URL — check the link and try again.`;
+  } else {
+    msg = `Couldn't reach ${host || "that URL"} through any proxy.`;
+  }
+  msg += " The reliable route: take screenshots of the recipe (scroll and capture each screen) and use 📷 Scan recipe screenshots below — it works even when sites block importing.";
+  const err = new Error(msg);
+  err.detail = failures.join("; ");
+  throw err;
 }
 
 async function importFromURL() {
@@ -487,6 +543,11 @@ async function importFromURL() {
   const url = input.value.trim();
 
   if (!url) { statusEl.className = "url-import-status error"; statusEl.textContent = "Paste a URL first."; return; }
+  try { new URL(url); } catch (_) {
+    statusEl.className = "url-import-status error";
+    statusEl.textContent = "That doesn't look like a full URL — include https:// and try again.";
+    return;
+  }
 
   btn.disabled = true;
   btn.textContent = "Importing…";
@@ -494,8 +555,6 @@ async function importFromURL() {
   statusEl.textContent = "Fetching page…";
 
   try {
-    // Fetch the page HTML through a CORS proxy. Public proxies go down
-    // regularly, so we try several and use the first that responds.
     const html = await fetchPageViaProxy(url, statusEl);
     if (!html) throw new Error("Page returned empty content");
 
@@ -512,14 +571,14 @@ async function importFromURL() {
       if (meta.name) {
         populateFromMeta(meta, url);
         statusEl.className = "url-import-status warn";
-        statusEl.textContent = "⚠ Imported basic info only — this site doesn't publish structured recipe data. Fill in ingredients and instructions manually.";
+        statusEl.textContent = "⚠ Imported basic info only — this page doesn't publish structured recipe data. Fill in ingredients and instructions manually, or use 📷 Scan recipe screenshots below.";
       } else {
-        throw new Error("No recipe data found on this page. The site may require a login or block automated access.");
+        throw new Error("The page loaded, but no recipe data was found on it. The site may require a login or not publish recipe data in a readable format. Fill the fields manually, or use 📷 Scan recipe screenshots below.");
       }
     }
   } catch (err) {
     statusEl.className = "url-import-status error";
-    statusEl.textContent = "✗ " + err.message;
+    statusEl.textContent = "✗ " + err.message + (err.detail ? " (" + err.detail + ")" : "");
   } finally {
     btn.disabled = false;
     btn.textContent = "Import";
@@ -676,139 +735,409 @@ photoZone.addEventListener("drop", e => {
 });
 
 // ============================================================
-//  OCR: SCAN RECIPE FROM PHOTO
+//  OCR: SCAN RECIPE FROM SCREENSHOTS (multi-image)
 // ============================================================
 
-let ocrImageFile = null;
+// Ordered collection of screenshots for ONE recipe: { id, file, dataUrl, name }.
+// Files are always appended, so "add more" is just selecting or dropping again.
+let ocrImages = [];
+let ocrScanRunning = false;
+let ocrDragId = null;
 
-function handleOCRFile(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-  ocrImageFile = file;
-  const reader = new FileReader();
-  reader.onload = evt => {
-    const prev = document.getElementById("ocr-preview");
-    prev.src = evt.target.result;
-    prev.style.display = "block";
+function handleOCRFiles(fileList) {
+  const files = [...(fileList || [])];
+  if (!files.length) return;
+  const statusEl = document.getElementById("ocr-status");
+  const rejected = [];
+  let added = 0;
+  let pending = files.length;
+  const finish = () => {
+    if (--pending > 0) return;
+    renderOCRThumbs();
+    const parts = [];
+    if (added) parts.push((added === 1 ? "1 screenshot" : added + " screenshots") + " added (" + ocrImages.length + " total).");
+    if (rejected.length) parts.push("Skipped: " + rejected.join("; ") + ".");
+    if (ocrImages.length) parts.push("Drag to reorder or remove any, then click Scan & extract text.");
+    statusEl.className = "ocr-status" + (!added && rejected.length ? " error" : "");
+    statusEl.textContent = parts.join(" ");
   };
-  reader.readAsDataURL(file);
-  document.getElementById("ocr-scan-btn").style.display = "flex";
-  document.getElementById("ocr-status").textContent = "Image loaded. Click 'Scan & Extract Text' to start OCR.";
+  files.forEach(file => {
+    const name = (file.name || "image").toLowerCase();
+    // HEIC/HEIF photos can't be decoded by the scanner (or most browsers).
+    if (file.type === "image/heic" || file.type === "image/heif" || /\.hei[cf]$/.test(name)) {
+      rejected.push((file.name || "photo") + " (HEIC photos aren't supported - take a screenshot instead, or convert to JPG/PNG first)");
+      finish(); return;
+    }
+    if (!(file.type || "").startsWith("image/") && !/\.(png|jpe?g|webp|gif|bmp)$/.test(name)) {
+      rejected.push((file.name || "file") + " (not an image)");
+      finish(); return;
+    }
+    const reader = new FileReader();
+    reader.onload = evt => {
+      ocrImages.push({
+        id: "ocr" + Date.now() + Math.random().toString(36).slice(2, 8),
+        file,
+        dataUrl: evt.target.result,
+        name: file.name || "screenshot",
+      });
+      added++;
+      finish();
+    };
+    reader.onerror = () => { rejected.push((file.name || "file") + " (couldn't read it)"); finish(); };
+    reader.readAsDataURL(file);
+  });
 }
 
-// Drag-and-drop for OCR zone
+function renderOCRThumbs() {
+  const wrap = document.getElementById("ocr-thumbs");
+  const btn = document.getElementById("ocr-scan-btn");
+  wrap.innerHTML = "";
+  ocrImages.forEach((img, i) => {
+    const thumb = document.createElement("div");
+    thumb.className = "ocr-thumb";
+    thumb.draggable = true;
+    thumb.dataset.id = img.id;
+    thumb.innerHTML =
+      '<span class="ocr-thumb-num">' + (i + 1) + '</span>' +
+      '<img src="' + img.dataUrl + '" alt="Screenshot ' + (i + 1) + '">' +
+      '<button type="button" class="ocr-thumb-remove" title="Remove" aria-label="Remove screenshot">&times;</button>' +
+      '<div class="ocr-thumb-moves">' +
+        '<button type="button" class="ocr-thumb-move" title="Move earlier" aria-label="Move earlier"' + (i === 0 ? " disabled" : "") + '>&#8592;</button>' +
+        '<button type="button" class="ocr-thumb-move" title="Move later" aria-label="Move later"' + (i === ocrImages.length - 1 ? " disabled" : "") + '>&#8594;</button>' +
+      '</div>';
+    thumb.querySelector(".ocr-thumb-remove").onclick = () => removeOCRImage(img.id);
+    const moves = thumb.querySelectorAll(".ocr-thumb-move");
+    moves[0].onclick = () => moveOCRImage(img.id, -1);
+    moves[1].onclick = () => moveOCRImage(img.id, 1);
+    // Drag to reorder
+    thumb.addEventListener("dragstart", e => {
+      ocrDragId = img.id;
+      thumb.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+      try { e.dataTransfer.setData("text/plain", img.id); } catch (_) {}
+    });
+    thumb.addEventListener("dragend", () => { ocrDragId = null; thumb.classList.remove("dragging"); });
+    thumb.addEventListener("dragover", e => {
+      if (!ocrDragId) return; // let file drops fall through to the upload zone
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = "move";
+    });
+    thumb.addEventListener("drop", e => {
+      if (!ocrDragId) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (ocrDragId === img.id) return;
+      const from = ocrImages.findIndex(x => x.id === ocrDragId);
+      const to = ocrImages.findIndex(x => x.id === img.id);
+      if (from === -1 || to === -1) return;
+      const [moved] = ocrImages.splice(from, 1);
+      ocrImages.splice(to, 0, moved);
+      renderOCRThumbs();
+    });
+    wrap.appendChild(thumb);
+  });
+  btn.style.display = ocrImages.length ? "flex" : "none";
+  btn.textContent = ocrImages.length > 1
+    ? "Scan " + ocrImages.length + " screenshots & extract text"
+    : "Scan & extract text";
+}
+
+function removeOCRImage(id) {
+  ocrImages = ocrImages.filter(x => x.id !== id);
+  renderOCRThumbs();
+  const statusEl = document.getElementById("ocr-status");
+  statusEl.textContent = ocrImages.length
+    ? ocrImages.length + (ocrImages.length === 1 ? " screenshot" : " screenshots") + " ready."
+    : "";
+}
+
+function moveOCRImage(id, dir) {
+  const i = ocrImages.findIndex(x => x.id === id);
+  const j = i + dir;
+  if (i === -1 || j < 0 || j >= ocrImages.length) return;
+  const tmp = ocrImages[i]; ocrImages[i] = ocrImages[j]; ocrImages[j] = tmp;
+  renderOCRThumbs();
+}
+
+function clearOCRImages() {
+  ocrImages = [];
+  renderOCRThumbs();
+  document.getElementById("ocr-status").textContent = "";
+}
+
+// Drag-and-drop for OCR zone (accepts multiple files at once)
 const ocrZone = document.getElementById("ocr-drop-zone");
 ocrZone.addEventListener("dragover", e => { e.preventDefault(); ocrZone.classList.add("dragover"); });
 ocrZone.addEventListener("dragleave", () => ocrZone.classList.remove("dragover"));
 ocrZone.addEventListener("drop", e => {
   e.preventDefault(); ocrZone.classList.remove("dragover");
-  const file = e.dataTransfer.files[0];
-  if (file && file.type.startsWith("image/")) handleOCRFile({target:{files:[file]}});
+  handleOCRFiles(e.dataTransfer.files);
 });
 
 async function runOCR() {
-  if (!ocrImageFile) { alert("Please upload an image first."); return; }
   const statusEl = document.getElementById("ocr-status");
   const progressWrap = document.getElementById("ocr-progress-wrap");
   const progressBar = document.getElementById("ocr-progress-bar");
   const btn = document.getElementById("ocr-scan-btn");
 
+  if (ocrScanRunning) return;
+  if (!ocrImages.length) {
+    statusEl.className = "ocr-status error";
+    statusEl.textContent = "Add at least one screenshot first.";
+    return;
+  }
+  if (typeof Tesseract === "undefined") {
+    statusEl.className = "ocr-status error";
+    statusEl.textContent = "The OCR engine didn't load - check your internet connection, reload the page, and try again.";
+    return;
+  }
+
+  ocrScanRunning = true;
   btn.disabled = true;
   progressWrap.style.display = "block";
-  statusEl.classList.add("active");
-  statusEl.textContent = "Initializing OCR engine…";
+  progressBar.style.width = "0%";
+  statusEl.className = "ocr-status active";
+
+  const total = ocrImages.length;
+  const pageTexts = [];
+  const failures = [];
+  const scanState = { index: 0 };
+  let worker = null;
 
   try {
-    const worker = await Tesseract.createWorker("eng", 1, {
-      workerPath: "https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/worker.min.js",
-      langPath:   "https://tessdata.projectnaptha.com/4.0.0",
-      corePath:   "https://cdn.jsdelivr.net/npm/tesseract.js-core@4.0.3/tesseract-core-simd.wasm.js",
+    statusEl.textContent = "Starting the OCR engine…";
+    worker = await Tesseract.createWorker("eng", 1, {
       logger: m => {
         if (m.status === "recognizing text") {
-          const pct = Math.round(m.progress * 100);
-          progressBar.style.width = pct + "%";
-          statusEl.textContent = `Scanning… ${pct}%`;
-        } else if (m.status === "loading tesseract core") {
-          statusEl.textContent = "Loading OCR engine…";
-        } else if (m.status === "initializing tesseract") {
-          statusEl.textContent = "Initializing…";
-        } else if (m.status === "loading language traineddata") {
-          statusEl.textContent = "Loading language data…";
+          const within = typeof m.progress === "number" ? m.progress : 0;
+          progressBar.style.width = Math.round(((scanState.index + within) / total) * 100) + "%";
         }
-      }
+      },
     });
 
-    const { data: { text } } = await worker.recognize(ocrImageFile);
-    await worker.terminate();
+    for (let i = 0; i < total; i++) {
+      scanState.index = i;
+      statusEl.textContent = total > 1
+        ? "Scanning screenshot " + (i + 1) + " of " + total + "…"
+        : "Scanning screenshot…";
+      try {
+        const { data: { text } } = await worker.recognize(ocrImages[i].dataUrl);
+        pageTexts.push(text || "");
+      } catch (err) {
+        failures.push("screenshot " + (i + 1) + " (" + ocrImages[i].name + ")");
+        pageTexts.push("");
+      }
+      progressBar.style.width = Math.round(((i + 1) / total) * 100) + "%";
+    }
 
+    const combined = combineOCRPages(pageTexts);
     progressBar.style.width = "100%";
-    statusEl.textContent = "✅ Scan complete! Parsing recipe structure…";
 
-    // Parse the OCR text into form fields
-    parseOCRText(text);
+    if (!combined.length) {
+      progressWrap.style.display = "none";
+      statusEl.className = "ocr-status error";
+      statusEl.textContent = failures.length
+        ? "Couldn't read " + failures.join(", ") + ". Make sure the text is sharp and upright, then try again."
+        : "No text was found in " + (total > 1 ? "those screenshots" : "that screenshot") + ". Make sure the recipe text is clearly visible and try again.";
+      return;
+    }
+
+    statusEl.textContent = "Reading the recipe structure…";
+    const parsed = parseRecipeText(combined);
+    const filled = fillParsedRecipe(parsed);
+
+    let doneMsg = total > 1
+      ? "Done — scanned " + total + " screenshots into one recipe."
+      : "Done — scanned the screenshot.";
+    if (failures.length) {
+      doneMsg += " Couldn't read " + failures.join(", ") + ", so its text is missing — check the fields.";
+    }
+    if (filled.length) {
+      doneMsg += " Filled: " + filled.join(", ") + ".";
+    } else {
+      doneMsg += " Nothing was overwritten — your existing entries were kept.";
+    }
+    doneMsg += " Review the fields below and edit anything that looks off.";
 
     setTimeout(() => {
       progressWrap.style.display = "none";
-      statusEl.classList.remove("active");
-      statusEl.textContent = "Done! Check the form fields below — edit anything that looks off.";
-      btn.disabled = false;
-    }, 1200);
+      statusEl.className = "ocr-status";
+      statusEl.textContent = doneMsg;
+    }, 700);
 
   } catch (err) {
-    statusEl.classList.remove("active");
-    statusEl.textContent = "OCR failed: " + (err?.message || String(err) || "unknown error — check your internet connection and try again");
+    const msg = (err && err.message) || String(err) || "unknown error";
     progressWrap.style.display = "none";
+    statusEl.className = "ocr-status error";
+    statusEl.textContent = "OCR failed before scanning could finish: " + msg +
+      ". Check your internet connection (the engine downloads data on first use) and try again.";
+  } finally {
+    // Always release the OCR engine, even when scanning fails partway.
+    if (worker) { try { await worker.terminate(); } catch (_) {} }
+    ocrScanRunning = false;
     btn.disabled = false;
   }
 }
 
-// ---- Parse OCR text into form fields ----
-function parseOCRText(rawText) {
-  const lines = rawText.split("\n").map(l => l.trim()).filter(Boolean);
-  if (!lines.length) return;
+// ---- Combine pages: split raw page texts into clean lines and stitch them ----
+// together, dropping the overlap where two adjacent screenshots show the same
+// lines (the second screenshot is usually taken after scrolling a little).
+function combineOCRPages(pageTexts) {
+  const clean = t => String(t || "").split("\n")
+    .map(l => l.replace(/\s+/g, " ").trim())
+    .filter(l => l.length > 0);
+  let combined = [];
+  pageTexts.forEach(t => {
+    const lines = clean(t);
+    combined = combined.concat(dedupeOverlap(combined, lines));
+  });
+  return combined;
+}
 
-  // Heuristic parsing: look for ingredients section and instructions section
-  const text = rawText;
+function normalizeOCRLine(l) {
+  return l.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
 
-  // Try to identify title (first non-empty line or biggest text, first line that looks like a name)
-  const titleLine = lines.find(l => l.length > 2 && l.length < 80 && !l.match(/^\d/));
-  if (titleLine && !document.getElementById("f-name").value) {
-    document.getElementById("f-name").value = titleLine;
+// If the first k lines of `next` repeat the last k lines of `acc`, drop them
+// from `next`. Returns the de-duplicated new lines.
+function dedupeOverlap(acc, next) {
+  if (!acc.length) return next;
+  const maxK = Math.min(20, acc.length, next.length);
+  let best = 0;
+  for (let k = 1; k <= maxK; k++) {
+    let match = true;
+    for (let j = 0; j < k; j++) {
+      if (normalizeOCRLine(acc[acc.length - k + j]) !== normalizeOCRLine(next[j])) { match = false; break; }
+    }
+    if (match) best = k;
+  }
+  return next.slice(best);
+}
+
+// ---- Parse cleaned OCR lines into recipe fields ----
+// Pure function (no DOM), so it works the same for one screenshot or a
+// stitched multi-page recipe. The DOM-side fill is fillParsedRecipe().
+function parseRecipeText(lines) {
+  const result = { name: "", quantity: "", ingredients: "", instructions: "" };
+  if (!lines || !lines.length) return result;
+
+  const HEAD_ING = /^(ingredients?|you'?ll need|what you'?ll need( to make (this|it))?|shopping list)\s*:?\.?$/i;
+  const HEAD_INSTR = /^(instructions?|directions?|method|preparation|preperation|steps?|how to( make| prepare| cook| assemble)?|assembly)\s*:?\.?$/i;
+  const SERVES_RE = /\b(serves?|servings?|yields?|makes?|portions?)\b/i;
+  const SERVING_PHRASE_RE = /\b(serves?\s+[^.;,\n]{1,40}|servings?\s*:?\s*\d[^.;,\n]{0,30}|yields?\s*:?\s*[^.;,\n]{1,40}|makes\s+(about\s+)?[^.;,\n]{1,40})/i;
+  const STEP_NUM_RE = /^\s*(?:step\s+)?\d{1,2}\s*[.)]\s+/i;
+  const BULLET_RE = /^[-*•·▪◦]\s+/;
+  const QTY_START_RE = /^([\d½⅓¼¾⅔⅛⅜⅝⅞]|\d+\s*\/\s*\d+|[-*•·▪◦]\s)/;
+  const UNIT_RE = /\b(cups?|tablespoons?|tbsp\.?|teaspoons?|tsp\.?|ounces?|oz\.?|pounds?|lbs?\.?|grams?|kilograms?|kg\.?|milliliters?|ml\.?|liters?|pinch(?:es)?|cloves?|cans?|packages?|pkg\.?|bunches?|slices?|sticks?|sprigs?|heads?|stalks?|dash(?:es)?|quarts?|qt\.?|pints?|pt\.?|gallons?|gal\.?)\b/i;
+
+  const isIngredientLike = l =>
+    (QTY_START_RE.test(l) && l.length < 120) || (UNIT_RE.test(l) && l.length < 90);
+  const dropNoise = l => l.replace(/[^a-zA-Z0-9]+/g, "").length >= 2;
+
+  // 1. Section headings (first occurrence of each)
+  let ingIdx = -1, instrIdx = -1;
+  lines.forEach((l, i) => {
+    if (ingIdx === -1 && HEAD_ING.test(l)) ingIdx = i;
+    else if (instrIdx === -1 && HEAD_INSTR.test(l)) instrIdx = i;
+  });
+
+  // 2. Servings / yield
+  for (const l of lines) {
+    if (l.length >= 90 || !SERVES_RE.test(l)) continue;
+    const m = l.match(SERVING_PHRASE_RE);
+    if (m) {
+      result.quantity = m[1].trim().replace(/\s+/g, " ").replace(/^./, c => c.toUpperCase());
+      break;
+    }
+    if (l.length < 60) { result.quantity = l; break; }
   }
 
-  // Find ingredients block
-  const ingKeywords = /ingredient|you.ll need|what you need/i;
-  const instrKeywords = /instruction|direction|method|preparation|step|how to/i;
-  const servesKeyword = /serve|yield|makes|portion/i;
-
-  let ingStart = -1, instrStart = -1;
-  for (let i = 0; i < lines.length; i++) {
-    if (ingKeywords.test(lines[i]) && ingStart === -1) ingStart = i + 1;
-    if (instrKeywords.test(lines[i]) && instrStart === -1) instrStart = i + 1;
-    if (servesKeyword.test(lines[i]) && !document.getElementById("f-quantity").value) {
-      document.getElementById("f-quantity").value = lines[i];
-    }
-  }
-
-  if (ingStart === -1) ingStart = 1; // fallback: start from line 2
-  if (instrStart === -1) instrStart = Math.floor(lines.length / 2);
-
-  // If we found both, split them
-  if (ingStart < instrStart) {
-    const ingLines = lines.slice(ingStart, instrStart).filter(l => l.length > 2);
-    const instrLines = lines.slice(instrStart).filter(l => l.length > 2);
-    if (ingLines.length && quillIsEmpty(quillIngredients)) {
-      quillSetText(quillIngredients, ingLines.join("\n"));
-    }
-    if (instrLines.length && quillIsEmpty(quillInstructions)) {
-      quillSetText(quillInstructions, instrLines.join("\n"));
+  // 3. Split the body into ingredients and instructions
+  let ingLines = [], instrLines = [];
+  if (ingIdx !== -1 && instrIdx !== -1 && ingIdx < instrIdx) {
+    ingLines = lines.slice(ingIdx + 1, instrIdx);
+    instrLines = lines.slice(instrIdx + 1);
+  } else if (instrIdx !== -1) {
+    instrLines = lines.slice(instrIdx + 1);
+    ingLines = lines.slice(1, instrIdx); // skip the title line
+  } else if (ingIdx !== -1) {
+    const rest = lines.slice(ingIdx + 1);
+    const stepAt = rest.findIndex(l => STEP_NUM_RE.test(l));
+    if (stepAt > 0) {
+      ingLines = rest.slice(0, stepAt);
+      instrLines = rest.slice(stepAt);
+    } else {
+      ingLines = rest;
     }
   } else {
-    // Just dump all text into ingredients for manual review
-    if (quillIsEmpty(quillIngredients)) {
-      quillSetText(quillIngredients, lines.slice(1).join("\n"));
+    // No headings at all — heuristics: numbered steps mark the instructions;
+    // otherwise find the run of ingredient-looking lines and split after it.
+    const body = lines.slice(1); // line 0 is the title candidate
+    const stepAt = body.findIndex(l => STEP_NUM_RE.test(l));
+    if (stepAt > 0) {
+      ingLines = body.slice(0, stepAt);
+      instrLines = body.slice(stepAt);
+    } else {
+      const start = body.findIndex(isIngredientLike);
+      if (start === -1) {
+        ingLines = body; // can't tell — put it all in ingredients for manual review
+      } else {
+        // Extend the ingredient run; tolerate one non-matching line (e.g.
+        // "Salt and pepper to taste") only if the next line matches again.
+        let end = start;
+        for (let i = start; i < body.length; i++) {
+          if (isIngredientLike(body[i])) { end = i + 1; continue; }
+          if (i === end && i + 1 < body.length && isIngredientLike(body[i + 1])) continue;
+          if (i >= end) break;
+        }
+        ingLines = body.slice(start, end);
+        instrLines = body.slice(end);
+      }
     }
   }
+
+  const cleanIng = ingLines.filter(dropNoise)
+    .map(l => l.replace(BULLET_RE, "").trim())
+    .filter(l => l.length > 1 && !HEAD_ING.test(l) && !HEAD_INSTR.test(l));
+  const cleanInstr = instrLines.filter(dropNoise)
+    .map(l => l.trim())
+    .filter(l => l.length > 1 && !HEAD_INSTR.test(l));
+
+  result.ingredients = cleanIng.join("\n");
+  result.instructions = cleanInstr.join("\n");
+
+  // 4. Title: the first usable line before the ingredients/instructions section
+  const limit = ingIdx !== -1 ? ingIdx : (instrIdx !== -1 ? instrIdx : Math.min(lines.length, 4));
+  for (let i = 0; i < limit; i++) {
+    const l = lines[i];
+    if (HEAD_ING.test(l) || HEAD_INSTR.test(l) || STEP_NUM_RE.test(l)) continue;
+    if (SERVES_RE.test(l) && result.quantity) continue;
+    if (l.length < 3 || l.length > 80) continue;
+    if (!/[a-zA-Z]{2,}/.test(l)) continue;
+    result.name = l.replace(/[:.]+$/, "").trim();
+    break;
+  }
+
+  return result;
+}
+
+// Fill only EMPTY fields — anything the user already typed stays untouched.
+function fillParsedRecipe(parsed) {
+  const filled = [];
+  const nameEl = document.getElementById("f-name");
+  if (parsed.name && !nameEl.value.trim()) { nameEl.value = parsed.name; filled.push("name"); }
+  const qtyEl = document.getElementById("f-quantity");
+  if (parsed.quantity && !qtyEl.value.trim()) { qtyEl.value = parsed.quantity; filled.push("servings"); }
+  if (parsed.ingredients && quillIsEmpty(quillIngredients)) {
+    quillSetText(quillIngredients, parsed.ingredients);
+    filled.push("ingredients");
+  }
+  if (parsed.instructions && quillIsEmpty(quillInstructions)) {
+    quillSetText(quillInstructions, parsed.instructions);
+    filled.push("instructions");
+  }
+  return filled;
 }
 
 // ============================================================
@@ -1373,7 +1702,8 @@ function clearForm() {
   clearCategoryPills();
   clearRelated();
   document.getElementById("photo-preview").style.display = "none";
-  document.getElementById("ocr-preview").style.display = "none";
+  clearOCRImages();
+  document.getElementById("ocr-progress-wrap").style.display = "none";
   document.getElementById("voice-transcript").style.display = "none";
   document.getElementById("submit-status").textContent = "";
   voiceFullTranscript = "";

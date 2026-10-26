@@ -50,8 +50,12 @@ export default {
           "User-Agent":
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
           "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "Accept-Language": "en-US,en;q=0.9",
         },
         redirect: "follow",
+        // Don't hang on sites that stall automated fetches — fail fast so the
+        // admin page can report a timeout instead of spinning forever.
+        signal: AbortSignal.timeout(12000),
       });
       const body = await upstream.text();
       return new Response(body, {
@@ -63,10 +67,13 @@ export default {
         },
       });
     } catch (err) {
-      return new Response("Upstream fetch failed: " + (err && err.message), {
-        status: 502,
-        headers: cors,
-      });
+      const isTimeout = err && (err.name === "TimeoutError" || err.name === "AbortError");
+      return new Response(
+        isTimeout
+          ? "Upstream site did not respond within 12 seconds"
+          : "Upstream fetch failed: " + (err && err.message),
+        { status: isTimeout ? 504 : 502, headers: cors },
+      );
     }
   },
 };
