@@ -6,7 +6,7 @@ const server=http.createServer((req,res)=>{const f=path.join(root,req.url.split(
 const browser=await chromium.launch({executablePath:process.env.CHROME_PATH || '/usr/bin/google-chrome',headless:true,args:['--no-sandbox']});
 const page=await browser.newPage({viewport:{width:1280,height:960}});
 const reports=[],errors=[];page.on('pageerror',e=>errors.push(e.message));
-await page.addInitScript(()=>sessionStorage.setItem('jcb_admin_ok','1'));
+await page.addInitScript(()=>{sessionStorage.setItem('jcb_admin_ok','1');localStorage.setItem('jcb_admin_key','test-key');});
 await page.route('**/report',route=>{reports.push(JSON.parse(route.request().postData()));route.fulfill({status:202,headers:{'Access-Control-Allow-Origin':'*'},body:''})});
 await page.goto('http://localhost:8000/admin.html',{waitUntil:'networkidle'});
 await page.evaluate(()=>setTimeout(()=>{throw new TypeError('private recipe password URL secret')},0));

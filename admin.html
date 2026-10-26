@@ -39,7 +39,7 @@
   <div style="font-size:0.7rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#999;margin-bottom:4px;">The Johnson Cookbook</div>
   <h2 style="font-size:1.2rem;font-weight:600;color:#111;margin-bottom:8px;">Admin access</h2>
   <form onsubmit="checkPassword(event)" style="display:flex;flex-direction:column;gap:10px;width:100%;max-width:280px;">
-    <input id="pw-input" type="password" placeholder="Password" autocomplete="current-password"
+    <input id="pw-input" type="password" placeholder="Admin key" autocomplete="current-password"
       style="padding:10px 14px;border:1px solid #bfbfbf;border-radius:4px;font-size:0.95rem;font-family:inherit;outline:none;width:100%;">
     <button type="submit"
       style="padding:10px;background:#111;color:#fff;border:none;border-radius:4px;font-size:0.88rem;font-weight:600;cursor:pointer;font-family:inherit;">
@@ -50,14 +50,31 @@
 </div>
 
 <script>
+const ADMIN_KEY_STORAGE = "jcb_admin_key";
+// Asks the save service whether this key is right. Returns "ok", "unauthorized" or "unreachable".
+async function verifyAdminKey(key) {
+  if (!key) return "unauthorized";
+  try {
+    const res = await fetch(CONFIG.APPS_SCRIPT_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action: "auth", key }) });
+    const out = await res.json();
+    if (out && out.status === "ok") return "ok";
+    return out && out.message === "unauthorized" ? "unauthorized" : "unreachable";
+  } catch (_) { return "unreachable"; }
+}
 (function() {
   const SESSION_KEY = "jcb_admin_ok";
   const gate = document.getElementById("pw-gate");
 
-  // Already authenticated this session — hide gate immediately
-  if (sessionStorage.getItem(SESSION_KEY) === "1") {
+  // Already signed in on this browser (the key is checked by the save service on every save)
+  if (localStorage.getItem(ADMIN_KEY_STORAGE) && sessionStorage.getItem(SESSION_KEY) === "1") {
     gate.style.display = "none";
     return;
+  }
+  if (localStorage.getItem(ADMIN_KEY_STORAGE) && !sessionStorage.getItem(SESSION_KEY)) {
+    // New tab/session on a browser that has a saved key: re-verify it quietly.
+    verifyAdminKey(localStorage.getItem(ADMIN_KEY_STORAGE)).then(r => {
+      if (r === "ok") { sessionStorage.setItem(SESSION_KEY, "1"); gate.style.display = "none"; document.body.style.overflow = ""; }
+    });
   }
 
   // Show gate
@@ -65,15 +82,20 @@
   document.body.style.overflow = "hidden";
   setTimeout(() => document.getElementById("pw-input").focus(), 50);
 
-  window.checkPassword = function(e) {
+  window.checkPassword = async function(e) {
     e.preventDefault();
-    const val = document.getElementById("pw-input").value;
-    if (val === CONFIG.ADMIN_PASSWORD) {
+    const val = document.getElementById("pw-input").value.trim();
+    const err = document.getElementById("pw-error");
+    err.textContent = "Checking…";
+    const r = await verifyAdminKey(val);
+    if (r === "ok") {
+      localStorage.setItem(ADMIN_KEY_STORAGE, val);
       sessionStorage.setItem(SESSION_KEY, "1");
+      err.textContent = "";
       gate.style.display = "none";
       document.body.style.overflow = "";
     } else {
-      document.getElementById("pw-error").textContent = "Incorrect password.";
+      err.textContent = r === "unauthorized" ? "That key wasn't accepted." : "Couldn't reach the save service to check the key. Try again.";
       document.getElementById("pw-input").value = "";
       document.getElementById("pw-input").focus();
     }
@@ -714,7 +736,7 @@ function stripHtmlTags(s) {
 const PHOTO_MAX_INPUT_BYTES = 15 * 1024 * 1024;   // largest original we will try to decode
 const PHOTO_MAX_UPLOAD_BYTES = 500 * 1024;          // after resizing; the worker enforces 600 KB
 const PHOTO_MAX_SIDE = 1200;
-const PHOTO_KEY_STORAGE = "jcb_photo_upload_key";
+const PHOTO_KEY_STORAGE = ADMIN_KEY_STORAGE; // one admin key covers saves and photo uploads
 let photoUploading = false;
 
 function photoUploadEndpoint() {
@@ -783,7 +805,7 @@ async function handlePhotoUpload(e) {
     prev.style.display = "block";
     let key = localStorage.getItem(PHOTO_KEY_STORAGE);
     if (!key) {
-      key = (prompt("Enter the photo upload key (asked once per browser). It is not stored on the website.") || "").trim();
+      key = (prompt("Enter the admin key (asked once per browser). It is not stored on the website.") || "").trim();
       if (!key) throw new Error("Upload cancelled - no key entered. The preview above was not uploaded.");
     }
     setPhotoStatus("", "Uploading photo…");
@@ -795,7 +817,7 @@ async function handlePhotoUpload(e) {
     } finally { clearTimeout(timer); }
     if (res.status === 401) {
       localStorage.removeItem(PHOTO_KEY_STORAGE);
-      throw new Error("That upload key wasn't accepted. Pick the photo again to re-enter it.");
+      throw new Error("That admin key wasn't accepted by the photo service. Pick the photo again to re-enter it.");
     }
     if (!res.ok) {
       const detail = res.status === 429 ? "Too many uploads right now - wait a minute and retry."
@@ -1673,7 +1695,9 @@ document.addEventListener("click", e => {
 // Send a change to the Apps Script and read its answer. The script replies with
 // {"status":"ok"} or {"status":"error","message":...}; without reading that reply
 // the page can't know whether anything was saved.
-async function postToSheet(payload) {
+async function postToSheet(payload, retried) {
+  const adminKey = localStorage.getItem(ADMIN_KEY_STORAGE) || "";
+  payload = Object.assign({}, payload, { key: adminKey });
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 30000);
   let res;
@@ -1692,6 +1716,15 @@ async function postToSheet(payload) {
   } finally { clearTimeout(timer); }
   let out = null;
   try { out = await res.json(); } catch (_) {}
+  if (out && out.status === "error" && out.message === "unauthorized") {
+    // Ask for the key right here so nothing in the open form is lost, then retry once.
+    if (retried) throw new Error("The admin key wasn't accepted, so nothing was saved.");
+    const k = (prompt("The save service needs the admin key. Enter it to save (your form stays as it is).") || "").trim();
+    if (!k) throw new Error("Not saved - no admin key entered. Your form is unchanged.");
+    if (await verifyAdminKey(k) !== "ok") { throw new Error("That admin key wasn't accepted, so nothing was saved."); }
+    localStorage.setItem(ADMIN_KEY_STORAGE, k);
+    return postToSheet(payload, true);
+  }
   if (!out || out.status !== "ok") {
     throw new Error(out && out.message ? "The save service refused it: " + out.message : "The save service did not confirm the save (unreadable reply). Check the sheet before trying again.");
   }
@@ -2181,17 +2214,12 @@ function submitArticle(e) {
   status.className = "submit-status";
   status.textContent = articleEditMode ? "Saving changes…" : "Saving…";
 
-  fetch(CONFIG.APPS_SCRIPT_URL, {
-    method: "POST",
-    mode: "no-cors",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  })
+  postToSheet(data)
   .then(() => {
     status.className = "submit-status success";
     status.textContent = articleEditMode
-      ? "✅ Changes saved! The site updates after the sheet refreshes."
-      : "✅ Article saved! It'll appear after the sheet refreshes.";
+      ? "✅ Changes saved - the save service confirmed it. The site updates after the sheet refreshes."
+      : "✅ Article saved - the save service confirmed it. It'll appear after the sheet refreshes.";
     btn.disabled = false;
     if (!articleEditMode) { document.getElementById("article-form").reset(); quillArticleBody.setContents([]); }
   })

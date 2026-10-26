@@ -32,10 +32,8 @@ const CONFIG = {
   // Number of recipes to show per page (0 = show all)
   RECIPES_PER_PAGE: 0,
 
-  // Password required to access the Add Recipe page.
-  // Not cryptographically secure — just keeps casual visitors out.
-  // Change this to whatever word you want your family to use.
-  ADMIN_PASSWORD: "johnsons",
+  // The admin page no longer has a password in this file. Saving, deleting and photo
+  // uploads are checked by the save service and the photo service with a private admin key.
 
   // Fallback placeholder image when a recipe has no photo
   PLACEHOLDER_IMAGE: "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=600&q=80",
