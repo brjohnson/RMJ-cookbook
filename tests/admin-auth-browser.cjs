@@ -20,7 +20,7 @@ const assert = (c, m) => { if (!c) { console.error('FAIL: ' + m); process.exit(1
   await page.goto('http://localhost:8000/admin.html', { waitUntil: 'networkidle' });
   assert(await page.isVisible('#pw-gate'), 'gate shown with no key');
   // wrong key stays locked
-  await page.fill('#pw-input', 'johnsons'); await page.click('#pw-gate button[type=submit]');
+  await page.fill('#pw-input', 'not-the-key'); await page.click('#pw-gate button[type=submit]');
   await page.waitForFunction(() => document.getElementById('pw-error').textContent.includes("wasn't accepted"));
   assert(await page.isVisible('#pw-gate'), 'old public password no longer opens the gate');
   assert(await page.evaluate(() => localStorage.getItem('jcb_admin_key')) === null, 'bad key not stored');
