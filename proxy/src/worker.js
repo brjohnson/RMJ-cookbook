@@ -17,9 +17,13 @@ const ALLOWED_ORIGINS = [
 ];
 
 export default {
-  async fetch(request) {
+  async fetch(request, env = {}) {
     const origin = request.headers.get("Origin") || "";
     const cors = corsHeaders(origin);
+
+    if (new URL(request.url).pathname === "/report") {
+      return handleReport(request, env, origin, cors);
+    }
 
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: cors });
@@ -88,4 +92,50 @@ function corsHeaders(origin) {
     "Access-Control-Allow-Headers": "Content-Type",
     "Vary": "Origin",
   };
+}
+
+// This public endpoint is diagnostic telemetry, not authentication or an audit
+// trail. Origin checks reduce browser abuse; non-browser clients can forge them.
+const REPORT_KINDS = new Set(["runtime", "unhandled_rejection", "resource_load", "ocr_scan", "ocr_empty", "url_import"]);
+const REPORT_NAMES = new Set(["Error", "TypeError", "ReferenceError", "SyntaxError", "RangeError", "URIError", "EvalError", "AbortError", "NetworkError", "UnknownError"]);
+
+async function handleReport(request, env, origin, cors) {
+  const headers = { ...cors, "Access-Control-Allow-Methods": "POST, OPTIONS", "Cache-Control": "no-store" };
+  const reply = (text, status) => new Response(text, { status, headers });
+  if (!ALLOWED_ORIGINS.includes(origin)) return reply("Origin not allowed", 403);
+  if (request.method === "OPTIONS") return reply(null, 204);
+  if (request.method !== "POST") return reply("Method not allowed", 405);
+  // A required, per-IP Workers rate limiter prevents unbounded report logging.
+  // It fails closed if not bound; this never affects recipe proxy GET requests.
+  if (!env.REPORT_RATE_LIMITER) return reply("Reporting not configured", 503);
+  try {
+    const { success } = await env.REPORT_RATE_LIMITER.limit({ key: request.headers.get("CF-Connecting-IP") || "unknown" });
+    if (!success) return reply("Too many reports", 429);
+  } catch (_) { return reply("Reporting temporarily unavailable", 503); }
+  if (!(request.headers.get("Content-Type") || "").toLowerCase().startsWith("application/json")) return reply("JSON required", 415);
+  // Bound the bytes actually read, including chunked requests without a length.
+  const reader = request.body?.getReader();
+  if (!reader) return reply("Body required", 400);
+  let size = 0;
+  const chunks = [];
+  while (true) {
+    let part;
+    try { part = await reader.read(); } catch (_) { return reply("Invalid body", 400); }
+    if (part.done) break;
+    size += part.value.byteLength;
+    if (size > 1024) { await reader.cancel(); return reply("Report too large", 413); }
+    chunks.push(part.value);
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
+  let data;
+  try { data = JSON.parse(new TextDecoder().decode(bytes)); } catch (_) { return reply("Invalid JSON", 400); }
+  if (!data || data.version !== 1 || data.build !== "admin-errors-v1" || !REPORT_KINDS.has(data.kind) || !REPORT_NAMES.has(data.name) ||
+      !Number.isInteger(data.line) || data.line < 0 || data.line > 1000000 ||
+      !Number.isInteger(data.column) || data.column < 0 || data.column > 1000000) return reply("Invalid report", 400);
+  // Allowlist fields again server-side. Ignore arbitrary extra fields entirely.
+  console.log(JSON.stringify({ event: "admin_failure", version: 1, build: data.build,
+    kind: data.kind, name: data.name, line: data.line, column: data.column }));
+  return reply(null, 202);
 }

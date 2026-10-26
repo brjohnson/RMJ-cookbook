@@ -1,0 +1,34 @@
+const {chromium}=require('playwright');
+const http=require('http'),fs=require('fs'),path=require('path');
+const root=path.resolve(__dirname,'..');
+const server=http.createServer((req,res)=>{const f=path.join(root,req.url.split('?')[0]);try{const content=fs.readFileSync(f);res.setHeader('Content-Type',f.endsWith('.js')?'application/javascript':f.endsWith('.css')?'text/css':'text/html');res.end(content)}catch{res.writeHead(404);res.end()}}).listen(8000);
+(async()=>{
+const browser=await chromium.launch({executablePath:process.env.CHROME_PATH || '/usr/bin/google-chrome',headless:true,args:['--no-sandbox']});
+const page=await browser.newPage({viewport:{width:1280,height:960}});
+const reports=[],errors=[];page.on('pageerror',e=>errors.push(e.message));
+await page.addInitScript(()=>sessionStorage.setItem('jcb_admin_ok','1'));
+await page.route('**/report',route=>{reports.push(JSON.parse(route.request().postData()));route.fulfill({status:202,headers:{'Access-Control-Allow-Origin':'*'},body:''})});
+await page.goto('http://localhost:8000/admin.html',{waitUntil:'networkidle'});
+await page.evaluate(()=>setTimeout(()=>{throw new TypeError('private recipe password URL secret')},0));
+await page.waitForTimeout(200);
+if(reports.length!==1 || reports[0].kind!=='runtime' || JSON.stringify(reports).includes('secret'))throw Error('runtime privacy check failed');
+await page.evaluate(()=>{setTimeout(()=>{Promise.reject(new ReferenceError('secret'))},0)});
+await page.waitForTimeout(200);
+await page.evaluate(async()=>{ fetchPageViaProxy=async()=>{throw new Error('secret')}; document.getElementById('url-import-input').value='https://example.com/recipe'; await importFromURL(); });
+await page.evaluate(async()=>{ ocrImages=[{name:'private image.png',dataUrl:'data:image/png;base64,private'}]; Tesseract.createWorker=async()=>({recognize:async()=>{throw new Error('secret')},terminate:async()=>{}}); await runOCR(); });
+await page.waitForTimeout(200);
+await page.evaluate(async()=>{ Tesseract.createWorker=async()=>({recognize:async()=>({data:{text:''}}),terminate:async()=>{}}); await runOCR(); });
+await page.waitForTimeout(200);
+for(const kind of ['unhandled_rejection','url_import','ocr_scan','ocr_empty'])if(!reports.some(r=>r.kind===kind))throw Error('missing '+kind);
+if(JSON.stringify(reports).includes('secret')||JSON.stringify(reports).includes('private'))throw Error('privacy leak');
+await page.screenshot({path:'/tmp/cookbook-reporting.png',fullPage:false});
+console.log(JSON.stringify({reports,notice:await page.locator('#admin-error-notice').textContent(),pageErrors:errors},null,2));
+// Verify failed-report UI without allowing a recursive report.
+await page.unroute('**/report');await page.route('**/report',r=>r.abort());
+await page.evaluate(()=>AdminErrors.report('resource_load',null));await page.waitForTimeout(200);
+if(!(await page.locator('#admin-error-notice').textContent()).includes('could not be sent'))throw Error('failed report notice');
+await page.setViewportSize({width:390,height:844});
+await page.screenshot({path:'/tmp/cookbook-reporting-mobile.png'});
+console.log('All local browser checks passed');
+await browser.close();server.close();
+})().catch(e=>{console.error(e);server.close();process.exit(1)});

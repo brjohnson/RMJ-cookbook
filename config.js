@@ -46,4 +46,8 @@ const CONFIG = {
   // https://johnson-cookbook-proxy.<your-subdomain>.workers.dev
   // Leave blank to fall back to public CORS proxies.
   RECIPE_PROXY_URL: "https://johnson-cookbook-proxy.johnson-cookbook.workers.dev",
+
+  // Optional separate failure-report endpoint. Blank uses RECIPE_PROXY_URL + /report.
+  // Deploy the updated worker before enabling. See proxy/REPORTING.md.
+  ADMIN_REPORT_URL: "",
 };

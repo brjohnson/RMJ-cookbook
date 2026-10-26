@@ -23,7 +23,8 @@ Copy that URL into `../config.js` as `RECIPE_PROXY_URL`.
 
 ## How it's locked down
 
-- Only `GET` (plus `OPTIONS` preflight) is allowed.
+- Recipe fetching allows only `GET` (plus `OPTIONS` preflight).
+- `/report` accepts bounded admin failure reports by `POST`; see [REPORTING.md](REPORTING.md) for deployment, privacy, logs, limits, and notification options.
 - Only `http`/`https` target URLs are fetched.
 - Cross-origin browser requests are restricted to the origins listed in
   `ALLOWED_ORIGINS` in `src/worker.js` (the live domain + localhost).
