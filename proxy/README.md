@@ -44,3 +44,28 @@ which works no matter what the site allows.
 
 The worker gives up on an unresponsive site after 12 seconds and returns
 HTTP 504, so the admin page can show a timeout message instead of hanging.
+
+## Recipe photos (`/photo`)
+
+The admin page's "Recipe Photo" picker resizes the image to a JPEG in the browser
+(this also drops EXIF/location data), uploads it to `POST /photo`, and fills in the
+Image URL with the returned `/photo/<id>.jpg` address. Photos are stored in the
+`PHOTOS` KV namespace and are public to anyone who has the URL (the URL ends up in
+the public recipe sheet like any other image link).
+
+One-time setup, before merging the PR that uses it:
+
+1. `npx wrangler deploy` from `proxy/` (Wrangler 4.45+ creates the `PHOTOS` KV namespace
+   and the `PHOTO_RATE_LIMITER` binding; change namespace id `1002` first if it is in use).
+2. `npx wrangler secret put UPLOAD_KEY` and enter a passphrase. Uploads are refused
+   (503) until this is set. The admin page asks for it once per browser and keeps it in
+   that browser's localStorage. It is never in the repo or `config.js`.
+
+Limits and cost (Workers Free plan, https://developers.cloudflare.com/kv/platform/pricing/):
+1 GB storage, 1,000 writes/day, 100,000 reads/day. Over the limit, operations fail
+instead of billing. On the Paid plan overage is billed (storage $0.50/GB-month). Each
+photo is capped at 600 KB, so 1 GB holds well over a thousand photos.
+
+Removing a photo: `npx wrangler kv key delete --binding PHOTOS "photo:<id>" --remote`.
+Rotating the key: `wrangler secret put UPLOAD_KEY` again, then re-enter it in the admin page.
+Uploads accept only JPEGs under 600 KB with a valid key and are rate limited per IP.
