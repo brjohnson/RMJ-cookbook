@@ -5,9 +5,10 @@ text, or push notification. Someone must review Cloudflare logs, or configure an
 alerting consumer separately. External uptime/canary monitoring remains a separate
 layer and cannot see every real-device failure.
 
-## Enable after review and merge
+## Rollout after review, before merging
 
-1. Use Wrangler 4.36.0 or later. From `proxy/`, run `npx wrangler deploy` with
+1. After reviewing this branch, deploy its worker BEFORE merging the PR (GitHub
+   Pages publishes main automatically). Use Wrangler 4.36.0 or later. From `proxy/`, run `npx wrangler deploy` with
    your Cloudflare account. This deploy includes the `REPORT_RATE_LIMITER` binding
    and Workers Logs. Namespace `1001` must be unique to this limiter in your
    account; change it first if already used for another purpose.
